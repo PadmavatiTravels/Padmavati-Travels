@@ -15,7 +15,7 @@ import { getBookingsByType, getRecentBookings } from "@/services/bookingService"
 import { BookingType, type Booking } from "@/models/booking"
 import { useToast } from "@/hooks/use-toast"
 import { generateReportPDF } from "@/utils/pdfGenerator"
-import { generateExcelReport } from "@/utils/excelGenerator"
+import { generateExcelReport } from "@/utils/excelgenerator"
 
 const Reports = () => {
   const [date, setDate] = useState<Date>(new Date())
