@@ -27,6 +27,7 @@ const Receive = () => {
   const [isPdfLoading, setIsPdfLoading] = useState(false)
   const [lrNumber, setLrNumber] = useState("")
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [selectedStatuses, setSelectedStatuses] = useState<Record<string, string>>({})
   const { toast } = useToast()
   const destinations = useAppSelector((state) => state.booking.destinations)
   const isMobile = useIsMobile()
@@ -104,6 +105,47 @@ const Receive = () => {
       toast({
         title: "Error",
         description: "Failed to mark booking as received. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setProcessing((prev) => ({ ...prev, [bookingId]: false }))
+    }
+  }
+
+  const handleUpdateStatus = async (bookingId: string, status: string) => {
+    setProcessing((prev) => ({ ...prev, [bookingId]: true }))
+
+    try {
+      // Determine date field based on status
+      let dateField: string | undefined = undefined
+      if (status === "Received") {
+        dateField = "receiveDate"
+      } else if (status === "Dispatched") {
+        dateField = "dispatchDate"
+      } else if (status === "Not Received") {
+        dateField = "notReceivedDate"
+      } else if (status === "Not Dispatched") {
+        dateField = "notDispatchedDate"
+      }
+
+      await updateBookingStatus(bookingId, status, dateField)
+
+      // Update local state
+      const updatedBookings = bookings.map((booking) =>
+        booking.id === bookingId ? { ...booking, status } : booking,
+      )
+      setBookings(updatedBookings)
+      setFilteredBookings(updatedBookings)
+
+      toast({
+        title: "Success",
+        description: `Booking ${bookingId} status updated to ${status}`,
+      })
+    } catch (error) {
+      console.error("Error updating booking status:", error)
+      toast({
+        title: "Error",
+        description: `Failed to update booking status to ${status}. Please try again.`,
         variant: "destructive",
       })
     } finally {
@@ -340,20 +382,43 @@ const Receive = () => {
                             </span>
                           </td>
                           <td className="py-3 px-2 text-center">
-                            <div className="flex justify-center gap-2">
+                            <div className="flex justify-center gap-2 items-center">
+                              <select
+                                className="border rounded px-2 py-1 text-sm"
+                                value={selectedStatuses[booking.id] || ""}
+                                onChange={(e) =>
+                                  setSelectedStatuses((prev) => ({
+                                    ...prev,
+                                    [booking.id]: e.target.value,
+                                  }))
+                                }
+                                disabled={processing[booking.id]}
+                              >
+                                <option value="" disabled>
+                                  Select Status
+                                </option>
+                                <option value="Dispatched">Dispatched</option>
+                                <option value="Not Received">Not Received</option>
+                                <option value="Not Dispatched">Not Dispatched</option>
+                              </select>
                               <Button
                                 variant="default"
                                 size="sm"
                                 className="bg-brand-primary hover:bg-brand-primary/90"
-                                onClick={() => handleReceive(booking.id)}
-                                disabled={processing[booking.id]}
+                                onClick={() =>
+                                  handleUpdateStatus(booking.id, selectedStatuses[booking.id] || "")
+                                }
+                                disabled={
+                                  processing[booking.id] ||
+                                  !selectedStatuses[booking.id] ||
+                                  booking.status === "Received" ||
+                                  booking.status === "Delivered"
+                                }
                               >
                                 {processing[booking.id] ? (
                                   "Processing..."
                                 ) : (
-                                  <>
-                                    <Package size={16} className="mr-1" /> Receive
-                                  </>
+                                  "Update"
                                 )}
                               </Button>
                               <Button
@@ -514,21 +579,45 @@ const Receive = () => {
                   </div>
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex justify-end items-center space-x-2">
+                  <select
+                    className="border rounded px-2 py-1 text-sm"
+                    value={selectedStatuses[selectedBooking?.id || ""] || ""}
+                    onChange={(e) =>
+                      setSelectedStatuses((prev) => ({
+                        ...prev,
+                        [selectedBooking?.id || ""]: e.target.value,
+                      }))
+                    }
+                    disabled={processing[selectedBooking?.id || ""]}
+                  >
+                    <option value="" disabled>
+                      Select Status
+                    </option>
+                    <option value="Dispatched">Dispatched</option>
+                    <option value="Not Received">Not Received</option>
+                    <option value="Not Dispatched">Not Dispatched</option>
+                  </select>
                   <Button
                     className="bg-brand-primary hover:bg-brand-primary/90"
-                    onClick={() => handleReceive(selectedBooking.id)}
+                    onClick={() =>
+                      selectedBooking?.id &&
+                      handleUpdateStatus(selectedBooking.id, selectedStatuses[selectedBooking.id] || "")
+                    }
                     disabled={
-                      processing[selectedBooking.id] ||
-                      selectedBooking.status === "Received" ||
-                      selectedBooking.status === "Delivered"
+                      processing[selectedBooking?.id || ""] ||
+                      selectedBooking?.status === "Received" ||
+                      selectedBooking?.status === "Delivered" ||
+                      !selectedStatuses[selectedBooking?.id || ""]
                     }
                   >
-                    {processing[selectedBooking.id]
-                      ? "Processing..."
-                      : selectedBooking.status === "Received" || selectedBooking.status === "Delivered"
-                        ? "Already Processed"
-                        : "Mark as Received"}
+                    {processing[selectedBooking?.id || ""] ? (
+                      "Processing..."
+                    ) : selectedBooking?.status === "Received" || selectedBooking?.status === "Delivered" ? (
+                      "Already Processed"
+                    ) : (
+                      "Update Status"
+                    )}
                   </Button>
                 </div>
               </CardContent>

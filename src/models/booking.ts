@@ -42,7 +42,7 @@ export interface Booking {
   totalAmount: number // calculated (fixAmount + articleAmount)
 
   // Status fields
-  status: "Booked" | "Dispatched" | "In Transit" | "Received" | "Delivered"
+  status: "Booked" | "Dispatched" | "In Transit" | "Received" | "Delivered" | "Not Received" | "Not Dispatched"
   dispatchDate?: string
   receiveDate?: string
   deliveryDate?: string
