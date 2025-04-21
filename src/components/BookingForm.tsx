@@ -15,17 +15,13 @@ import { useToast } from "@/hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { downloadInvoicePDF } from "@/utils/pdfGenerator"
+import { useAppSelector } from "@/hooks/useAppSelector"
 
-const DESTINATIONS = ["Bangalore", "Kundapur", "Shivammoga", "Bijapur"]
-const ART_TYPES = ["Box", "Parcel", "Document", "Fragile"]
-
-interface BookingFormProps {
-  formType: BookingType
-}
-
-const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
+const BookingForm: React.FC<{ formType: BookingType }> = ({ formType }) => {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const destinations = useAppSelector(state => state.booking.destinations)
+  const articleTypes = useAppSelector(state => state.booking.articleTypes)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -42,6 +38,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
     saidToContain: "",
     remarks: "",
     fixAmount: 0,
+    status: "Booked"
   })
 
   const [articles, setArticles] = useState<Article[]>([
@@ -49,7 +46,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
       id: uuidv4(),
       articleName: "",
       actualWeight: 0,
-      artType: "Box",
+      artType: articleTypes.length > 0 ? articleTypes[0] : "Box",
       weightRate: 0,
       weightAmount: 0,
     },
@@ -109,7 +106,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
         id: uuidv4(),
         articleName: "",
         actualWeight: 0,
-        artType: "Box",
+        artType: articleTypes.length > 0 ? articleTypes[0] : "Box",
         weightRate: 0,
         weightAmount: 0,
       },
@@ -198,7 +195,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
         articleAmount,
         totalAmount,
         totalArticles: articles.length,
-        status: "Booked" as const,
+        status: formData.status,
       }
 
       toast({
@@ -271,7 +268,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
                     <SelectValue placeholder="Select destination" />
                   </SelectTrigger>
                   <SelectContent>
-                    {DESTINATIONS.map((dest) => (
+                    {destinations.map((dest) => (
                       <SelectItem key={dest} value={dest}>
                         {dest}
                       </SelectItem>
@@ -411,7 +408,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {ART_TYPES.map((type) => (
+                        {articleTypes.map((type) => (
                           <SelectItem key={type} value={type}>
                             {type}
                           </SelectItem>
@@ -478,53 +475,48 @@ const BookingForm: React.FC<BookingFormProps> = ({ formType }) => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="formType">Form Type</Label>
-                  <Input id="formType" name="formType" value={formData.formType} onChange={handleInputChange} />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="invoiceNo">Invoice No</Label>
-                  <Input id="invoiceNo" name="invoiceNo" value={formData.invoiceNo} onChange={handleInputChange} />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="declaredValue">Declared Value (₹)</Label>
-                  <Input
-                    id="declaredValue"
-                    name="declaredValue"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.declaredValue || ""}
-                    onChange={handleInputChange}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="formType">Form Type</Label>
+                <Input id="formType" name="formType" value={formData.formType} onChange={handleInputChange} />
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="saidToContain">Said to Contain</Label>
-                  <Input
-                    id="saidToContain"
-                    name="saidToContain"
-                    value={formData.saidToContain}
-                    onChange={handleInputChange}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="remarks">Remarks</Label>
-                  <Textarea
-                    id="remarks"
-                    name="remarks"
-                    value={formData.remarks}
-                    onChange={handleInputChange}
-                    rows={3}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="invoiceNo">Invoice No</Label>
+                <Input id="invoiceNo" name="invoiceNo" value={formData.invoiceNo} onChange={handleInputChange} />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="declaredValue">Declared Value (₹)</Label>
+                <Input
+                  id="declaredValue"
+                  name="declaredValue"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.declaredValue || ""}
+                  onChange={handleInputChange}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 mt-4">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                id="status"
+                value={formData.status}
+                onValueChange={(value) => handleSelectChange("status", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Booked">Booked</SelectItem>
+                  <SelectItem value="Dispatched">Dispatched</SelectItem>
+                  <SelectItem value="Received">Received</SelectItem>
+                  <SelectItem value="Not Dispatched">Not Dispatched</SelectItem>
+                  <SelectItem value="Not Received">Not Received</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>

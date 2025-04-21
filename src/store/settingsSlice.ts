@@ -1,4 +1,3 @@
-
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 interface SettingsState {
@@ -11,6 +10,8 @@ interface SettingsState {
   bankName: string;
   bankAccount: string;
   invoicePrefix: string;
+  branchName: string;
+  branchAddress: string;
 }
 
 // Default images
@@ -37,7 +38,9 @@ const getSavedSettings = (): SettingsState => {
     companyEmail: "info@padmavatitravels.com",
     bankName: "Name Bank",
     bankAccount: "123-456-7890",
-    invoicePrefix: "INV"
+    invoicePrefix: "INV",
+    branchName: "",
+    branchAddress: ""
   };
 };
 
@@ -60,15 +63,23 @@ const settingsSlice = createSlice({
       companyAddress?: string;
       companyPhone?: string;
       companyEmail?: string;
+      branchName?: string;
+      branchAddress?: string;
     }>) => {
-      state = { ...state, ...action.payload };
+      if (action.payload.companyName !== undefined) state.companyName = action.payload.companyName;
+      if (action.payload.companyAddress !== undefined) state.companyAddress = action.payload.companyAddress;
+      if (action.payload.companyPhone !== undefined) state.companyPhone = action.payload.companyPhone;
+      if (action.payload.companyEmail !== undefined) state.companyEmail = action.payload.companyEmail;
+      if (action.payload.branchName !== undefined) state.branchName = action.payload.branchName;
+      if (action.payload.branchAddress !== undefined) state.branchAddress = action.payload.branchAddress;
       localStorage.setItem('companySettings', JSON.stringify(state));
     },
     updateBankDetails: (state, action: PayloadAction<{
       bankName?: string;
       bankAccount?: string;
     }>) => {
-      state = { ...state, ...action.payload };
+      if (action.payload.bankName !== undefined) state.bankName = action.payload.bankName;
+      if (action.payload.bankAccount !== undefined) state.bankAccount = action.payload.bankAccount;
       localStorage.setItem('companySettings', JSON.stringify(state));
     },
     updateInvoicePrefix: (state, action: PayloadAction<string>) => {
@@ -85,6 +96,8 @@ const settingsSlice = createSlice({
       state.bankName = "Name Bank";
       state.bankAccount = "123-456-7890";
       state.invoicePrefix = "INV";
+      state.branchName = "";
+      state.branchAddress = "";
       localStorage.setItem('companySettings', JSON.stringify(state));
     }
   },
