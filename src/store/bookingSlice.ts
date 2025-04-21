@@ -50,9 +50,12 @@ export const fetchDropdownOptions = createAsyncThunk(
         });
         return { destinations: [], articleTypes: [] };
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error in fetchDropdownOptions:", error);
-      return rejectWithValue(error.message);
+      if (error instanceof Error) {
+        return rejectWithValue(error.message);
+      }
+      return rejectWithValue("Unknown error");
     }
   }
 );
@@ -60,15 +63,14 @@ export const fetchDropdownOptions = createAsyncThunk(
 // Async thunk to add a new destination to Firestore and store
 export const addDestinationAsync = createAsyncThunk(
   'booking/addDestinationAsync',
-  async (destination: string, { rejectWithValue, getState }) => {
+  async ({ destination, userId }: { destination: string; userId: string }, { rejectWithValue }) => {
     try {
-      const { auth } = getState() as { auth: { currentUser: any } };
-      if (!auth.currentUser) {
+      if (!userId) {
         throw new Error("User not authenticated");
       }
       
       const db = getFirestore();
-      const userDocRef = doc(db, "users", auth.currentUser.uid);
+      const userDocRef = doc(db, "users", userId);
       
       // First check if the document exists
       const docSnap = await getDoc(userDocRef);
@@ -89,9 +91,12 @@ export const addDestinationAsync = createAsyncThunk(
       }
       
       return destination;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error in addDestinationAsync:", error);
-      return rejectWithValue(error.message);
+      if (error instanceof Error) {
+        return rejectWithValue(error.message);
+      }
+      return rejectWithValue("Unknown error");
     }
   }
 );
@@ -99,15 +104,14 @@ export const addDestinationAsync = createAsyncThunk(
 // Async thunk to add a new article type to Firestore and store
 export const addArticleTypeAsync = createAsyncThunk(
   'booking/addArticleTypeAsync',
-  async (articleType: string, { rejectWithValue, getState }) => {
+  async ({ articleType, userId }: { articleType: string; userId: string }, { rejectWithValue }) => {
     try {
-      const { auth } = getState() as { auth: { currentUser: any } };
-      if (!auth.currentUser) {
+      if (!userId) {
         throw new Error("User not authenticated");
       }
       
       const db = getFirestore();
-      const userDocRef = doc(db, "users", auth.currentUser.uid);
+      const userDocRef = doc(db, "users", userId);
       
       // First check if the document exists
       const docSnap = await getDoc(userDocRef);
@@ -128,9 +132,12 @@ export const addArticleTypeAsync = createAsyncThunk(
       }
       
       return articleType;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error in addArticleTypeAsync:", error);
-      return rejectWithValue(error.message);
+      if (error instanceof Error) {
+        return rejectWithValue(error.message);
+      }
+      return rejectWithValue("Unknown error");
     }
   }
 );

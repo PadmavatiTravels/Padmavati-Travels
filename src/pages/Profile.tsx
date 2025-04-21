@@ -251,7 +251,7 @@ const Profile = () => {
         }, { merge: true });
         
         // Also dispatch the Redux action to keep state in sync
-        await dispatch(addDestinationAsync(newDestination.trim())).unwrap();
+        await dispatch(addDestinationAsync({ destination: newDestination.trim(), userId: currentUser.uid })).unwrap();
       } else {
         throw new Error("No user authenticated");
       }
@@ -302,7 +302,7 @@ const Profile = () => {
         }, { merge: true });
         
         // Also dispatch the Redux action to keep state in sync
-        await dispatch(addArticleTypeAsync(newArticleType.trim())).unwrap();
+        await dispatch(addArticleTypeAsync({ articleType: newArticleType.trim(), userId: currentUser.uid })).unwrap();
       } else {
         throw new Error("No user authenticated");
       }
