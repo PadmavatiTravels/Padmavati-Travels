@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Plus, Trash2 } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import type { Article, BookingType } from "@/models/booking"
-import { createBooking, calculateWeightAmount, calculateTotalArticleAmount } from "@/services/bookingService"
+import { createBooking, calculateWeightAmount, calculateTotalArticleAmount, addDropdownOption } from "@/services/bookingService"
 import { useToast } from "@/hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,6 +23,8 @@ const BookingForm: React.FC<{ formType: BookingType }> = ({ formType }) => {
   const destinations = useAppSelector(state => state.booking.destinations)
   const articleTypes = useAppSelector(state => state.booking.articleTypes)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isTypingDestination, setIsTypingDestination] = useState(false)
+  const customDestinationRef = useRef<HTMLInputElement>(null)
 
   const [formData, setFormData] = useState({
     deliveryDestination: "",
@@ -62,9 +64,32 @@ const BookingForm: React.FC<{ formType: BookingType }> = ({ formType }) => {
   }
 
   const handleSelectChange = (name: string, value: string) => {
+    if (name === "deliveryDestination" && value === "add-new") {
+      setIsTypingDestination(true)
+      setTimeout(() => {
+        customDestinationRef.current?.focus()
+      }, 100)
+      return
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value,
+    }))
+  }
+
+  const handleCustomDestinationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      deliveryDestination: e.target.value,
+    }))
+  }
+
+  const cancelCustomDestination = () => {
+    setIsTypingDestination(false)
+    setFormData((prev) => ({
+      ...prev,
+      deliveryDestination: "",
     }))
   }
 
@@ -147,7 +172,7 @@ const BookingForm: React.FC<{ formType: BookingType }> = ({ formType }) => {
     if (!formData.deliveryDestination) {
       toast({
         title: "Validation Error",
-        description: "Please select a delivery destination",
+        description: "Please select or enter a delivery destination",
         variant: "destructive",
       })
       return
@@ -187,6 +212,12 @@ const BookingForm: React.FC<{ formType: BookingType }> = ({ formType }) => {
     try {
       const today = new Date().toISOString().split("T")[0]
 
+      // Check if destination is new and save it to Firebase
+      const isNewDestination = !destinations.includes(formData.deliveryDestination)
+      if (isNewDestination) {
+        await addDropdownOption("destinations", formData.deliveryDestination)
+      }
+
       const bookingData = {
         bookingType: formType,
         bookingDate: today,
@@ -211,6 +242,14 @@ const BookingForm: React.FC<{ formType: BookingType }> = ({ formType }) => {
         description: `Booking with LR #${newBooking.id} created successfully`,
         variant: "default",
       })
+
+      if (isNewDestination) {
+        toast({
+          title: "New Destination Added",
+          description: `"${formData.deliveryDestination}" has been added to destinations`,
+          variant: "default",
+        })
+      }
 
       // Generate and download the invoice
       try {
@@ -260,21 +299,46 @@ const BookingForm: React.FC<{ formType: BookingType }> = ({ formType }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="deliveryDestination">Delivery Destination</Label>
-                <Select
-                  value={formData.deliveryDestination}
-                  onValueChange={(value) => handleSelectChange("deliveryDestination", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select destination" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {destinations.map((dest) => (
-                      <SelectItem key={dest} value={dest}>
-                        {dest}
+                {isTypingDestination ? (
+                  <div className="flex space-x-2">
+                    <Input
+                      ref={customDestinationRef}
+                      id="customDestination"
+                      name="deliveryDestination"
+                      value={formData.deliveryDestination}
+                      onChange={handleCustomDestinationChange}
+                      placeholder="Enter new destination"
+                      className="flex-grow"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      className="shrink-0"
+                      onClick={cancelCustomDestination}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Select
+                    value={formData.deliveryDestination}
+                    onValueChange={(value) => handleSelectChange("deliveryDestination", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select destination" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {destinations.map((dest) => (
+                        <SelectItem key={dest} value={dest}>
+                          {dest}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="add-new" className="text-blue-600 font-medium">
+                        + Add New Destination
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </CardContent>
