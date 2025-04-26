@@ -1,5 +1,5 @@
 import { doc, setDoc, collection, query, getDocs, where, getDoc } from 'firebase/firestore';
-import { db } from 'src/lib/firebase';
+import { db } from '@/lib/firebase';
 
 export type ConsigneeDetails = {
   name: string;

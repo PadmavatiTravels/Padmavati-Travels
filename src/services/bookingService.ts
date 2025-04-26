@@ -187,3 +187,35 @@ export const updateBookingStatus = async (bookingId: string, status: string, dat
     throw error;
   }
 };
+
+// Function to fetch related address data for a given destination
+export const fetchDestinationAddress = async (destination: string): Promise<{ consignorAddress: string; consigneeAddress: string } | null> => {
+  try {
+    const docRef = doc(db, "destinationAddresses", destination);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return docSnap.data() as { consignorAddress: string; consigneeAddress: string };
+    } else {
+      return null;
+    }
+  } catch (error) {
+    console.error("Error fetching destination address:", error);
+    return null;
+  }
+};
+
+// Function to save destination-address mapping
+export const saveDestinationAddress = async (
+  destination: string,
+  addressData: { consignorAddress: string; consigneeAddress: string }
+): Promise<boolean> => {
+  try {
+    const docRef = doc(db, "destinationAddresses", destination);
+    await setDoc(docRef, addressData);
+    return true;
+  } catch (error) {
+    console.error("Error saving destination address:", error);
+    return false;
+  }
+};

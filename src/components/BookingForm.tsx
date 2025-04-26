@@ -17,6 +17,14 @@ import {
   getPreviousValues,
   savePreviousValues
 } from "@/services/bookingService"
+import {
+  saveConsigneeDetails,
+  getConsigneeByDestination
+} from "@/services/consigneeService"
+import {
+  saveDestinationAddress,
+  fetchDestinationAddress
+} from "@/services/destinationService"
 import { useToast } from "@/hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -65,6 +73,24 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     godown: "",
     status: "Booked"
   })
+
+  // Autofill related address when deliveryDestination changes
+  useEffect(() => {
+    const autofillAddress = async () => {
+      if (formData.deliveryDestination) {
+        const addressData = await fetchDestinationAddress(formData.deliveryDestination);
+        if (addressData) {
+          setFormData(prev => ({
+            ...prev,
+            consignorAddress: addressData.consignorAddress || prev.consignorAddress,
+            consigneeAddress: addressData.consigneeAddress || prev.consigneeAddress,
+          }));
+        }
+      }
+    };
+    autofillAddress();
+  }, [formData.deliveryDestination]);
+
 
   const [charges, setCharges] = useState({
     freight: 0,
@@ -191,7 +217,37 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
 
     // Save the selected value to field history
     saveToFieldHistory(name, value);
+    
+    // If destination is selected, fetch consignee details
+    if (name === "deliveryDestination" && value && value !== "add-new") {
+      fetchConsigneeDetails(value);
+    }
   }
+
+  // Add this new function to fetch and populate consignee details
+  const fetchConsigneeDetails = async (destination: string) => {
+    try {
+      const consigneeDetails = await getConsigneeByDestination(destination);
+      if (consigneeDetails) {
+        // Update form with consignee details
+        setFormData(prev => ({
+          ...prev,
+          consigneeName: consigneeDetails.name || prev.consigneeName,
+          consigneeMobile: consigneeDetails.mobile || prev.consigneeMobile,
+          consigneeAddress: consigneeDetails.address || prev.consigneeAddress,
+          consigneeGST: consigneeDetails.gstNo || prev.consigneeGST
+        }));
+        
+        toast({
+          title: "Consignee Details Loaded",
+          description: `Loaded details for ${consigneeDetails.name}`,
+          variant: "default",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching consignee details:", error);
+    }
+  };
 
   const handleCustomDestinationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({
@@ -335,6 +391,28 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         variant: "destructive",
       })
       return
+    }
+
+    // Save destination-address mapping when booking is created
+    if (formData.deliveryDestination) {
+      await saveDestinationAddress(formData.deliveryDestination, {
+        consignorAddress: formData.consignorAddress,
+        consigneeAddress: formData.consigneeAddress,
+      });
+    }
+    
+    // Save consignee details for future autofill
+    if (formData.deliveryDestination && formData.consigneeName && formData.consigneeMobile) {
+      try {
+        await saveConsigneeDetails(formData.deliveryDestination, {
+          name: formData.consigneeName,
+          mobile: formData.consigneeMobile,
+          address: formData.consigneeAddress || "",
+          gstNo: formData.consigneeGST || ""
+        });
+      } catch (saveError) {
+        console.error("Error saving consignee details:", saveError);
+      }
     }
 
     if (!formData.consignorName || !formData.consignorMobile) {
@@ -514,10 +592,8 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-        <span className="text-lg font-semibold px-3 py-1 border border-blue-700 rounded bg-blue-100 text-blue-700">
-        {formType === "Paid" ? "PAID" : formType === "ToPay" ? "TO PAY" : "RETURN"}
-      </span>
-          <Select 
+        
+          <Select   
             
             onValueChange={(value) => handleSelectChange("bookingType", value)}
           >
