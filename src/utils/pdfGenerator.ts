@@ -11,7 +11,7 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
   return new Promise((resolve, reject) => {
     try {
       // Get company settings from Redux store
-      const { companyName, companyAddress, companyPhone, companyEmail, companyLogo, invoiceHeader } =
+      const { companyName, companyAddress, companyPhone, companyEmail, companyLogo } =
         store.getState().settings
 
       // Create a new PDF document
@@ -24,7 +24,9 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
           img.crossOrigin = "anonymous"
           img.onload = () => {
             try {
-              doc.addImage(img, "JPEG", 14, 10, 40, 20)
+              // Add logo to both copies
+              doc.addImage(img, "JPEG", 14, 10, 20, 20) // Branch copy logo
+              doc.addImage(img, "JPEG", 110, 10, 20, 20) // Customer copy logo
               addContent()
             } catch (imgError) {
               console.error("Error adding logo image:", imgError)
@@ -45,128 +47,133 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
       }
 
       function addContent() {
-        // Add invoice header
-        doc.setFontSize(20)
-        doc.setTextColor(66, 89, 165) // Brand color
-        doc.text(companyName, 105, 20, { align: "center" })
+        // Set up the two-column layout
+        const leftColumnX = 14
+        const rightColumnX = 110
+        const columnWidth = 85
+        let currentY = 10
 
+        // Add company name for both copies
         doc.setFontSize(12)
-        doc.setTextColor(0, 0, 0) // Reset to black
-        doc.text(companyAddress, 105, 28, { align: "center" })
-        doc.text(`Phone: ${companyPhone} | Email: ${companyEmail}`, 105, 34, { align: "center" })
-
-        // Add horizontal line
-        doc.setDrawColor(66, 89, 165) // Brand color
-        doc.setLineWidth(0.5)
-        doc.line(14, 38, 196, 38)
-
-        // Add booking details
-        doc.setFontSize(16)
-        doc.text(`${booking.bookingType} BOOKING INVOICE`, 105, 48, { align: "center" })
-
-        // Add LR number and date
+        doc.setFont(undefined, 'bold')
+        doc.text("MUMBAI - BORIVALI", leftColumnX + 25, currentY + 5)
+        doc.text("MUMBAI - BORIVALI", rightColumnX + 25, currentY + 5)
+        
         doc.setFontSize(12)
-        doc.text(`LR No: ${booking.id}`, 14, 58)
-        doc.text(`Date: ${booking.bookingDate}`, 150, 58)
-
-        // Consignor and Consignee details
-        doc.setFontSize(11)
-        doc.setFont(undefined, "bold")
-        doc.text("Consignor (From):", 14, 68)
-        doc.text("Consignee (To):", 110, 68)
-
-        doc.setFont(undefined, "normal")
-        doc.setFontSize(10)
-        doc.text(booking.consignorName, 14, 75)
-        doc.text(`Mobile: ${booking.consignorMobile}`, 14, 81)
-        doc.text(booking.consignorAddress || "", 14, 87, { maxWidth: 80 })
-
-        doc.text(booking.consigneeName, 110, 75)
-        doc.text(`Mobile: ${booking.consigneeMobile}`, 110, 81)
-        doc.text(booking.consigneeAddress || "", 110, 87, { maxWidth: 80 })
-
-        // Destination and Invoice details
-        doc.setFontSize(10)
-        doc.text(`Destination: ${booking.deliveryDestination}`, 14, 100)
-        doc.text(`Invoice No: ${booking.invoiceNo || booking.id}`, 110, 100)
-        doc.text(`Declared Value: ₹${booking.declaredValue.toFixed(2)}`, 14, 106)
-        doc.text(`Form Type: ${booking.formType}`, 110, 106)
-
-        // Add articles table
-        const articleTableData = booking.articles.map((article) => [
-          article.articleName,
-          article.artType,
-          `${article.actualWeight} kg`,
-          `₹${article.weightRate.toFixed(2)}`,
-          `₹${article.weightAmount.toFixed(2)}`,
-        ])
-
-        autoTable(doc, {
-          startY: 115,
-          head: [["Article", "Art Type", "Weight", "Rate", "Amount"]],
-          body: articleTableData,
-          theme: "grid",
-          headStyles: {
-            fillColor: [66, 89, 165],
-            textColor: [255, 255, 255],
-            fontStyle: "bold",
-          },
-          footStyles: {
-            fillColor: [240, 240, 240],
-            textColor: [0, 0, 0],
-            fontStyle: "bold",
-          },
-          foot: [
-            [
-              {
-                content: "Total Amount:",
-                colSpan: 4,
-                styles: { halign: "right" },
-              },
-              `₹${booking.totalAmount.toFixed(2)}`,
-            ],
-          ],
-        })
-
-        // Get the final Y position after the table
-        const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY + 10 || 135
-
-        // Add additional information below the table
-        doc.text(`Said to Contain: ${booking.saidToContain || ""}`, 14, finalY)
-        doc.text(`Remarks: ${booking.remarks || ""}`, 14, finalY + 6)
-
-        // Add status information
-        doc.text(`Status: ${booking.status}`, 14, finalY + 12)
-        if (booking.dispatchDate) {
-          doc.text(`Dispatch Date: ${booking.dispatchDate}`, 14, finalY + 18)
-        }
-        if (booking.receiveDate) {
-          doc.text(`Receive Date: ${booking.receiveDate}`, 14, finalY + 24)
-        }
-        if (booking.deliveryDate) {
-          doc.text(`Delivery Date: ${booking.deliveryDate}`, 14, finalY + 30)
-        }
-
-        // Add company details
-        doc.text(`${companyName}`, 14, finalY + 40)
-        doc.text(`${companyAddress}`, 14, finalY + 46)
-        doc.text(`Phone: ${companyPhone}`, 14, finalY + 52)
-
-        // Add signatures section
-        doc.text("For Padmavati Travels", 14, finalY + 65)
-        doc.text("Receiver's Signature", 140, finalY + 65)
-
-        // Footer with terms and conditions
-        const footerY = finalY + 80
+        doc.text("PADMAVATI", leftColumnX + 25, currentY + 10)
+        doc.text("PADMAVATI", rightColumnX + 25, currentY + 10)
+        
+        doc.text("CARGO SERV", leftColumnX + 25, currentY + 15)
+        doc.text("CARGO SERV", rightColumnX + 25, currentY + 15)
+        
+        // Add location details
+        currentY += 20
         doc.setFontSize(8)
-        doc.text("Terms & Conditions:", 14, footerY)
-        doc.text("1. Goods are carried subject to the terms and conditions of Padmavati Travels.", 14, footerY + 4)
-        doc.text(
-          "2. Claims if any should be submitted in writing within 7 days from the date of delivery.",
-          14,
-          footerY + 8,
-        )
-        doc.text("3. Company is not responsible for any damage due to improper packaging.", 14, footerY + 12)
+        doc.setFont(undefined, 'normal')
+        doc.text("NEAR AXIS BANK BRIDGE ENDING,", leftColumnX + 25, currentY)
+        doc.text("NEAR AXIS BANK BRIDGE ENDING,", rightColumnX + 25, currentY)
+        
+        currentY += 5
+        doc.text("KULUPWADI, BORIVALI EAST.", leftColumnX + 25, currentY)
+        doc.text("KULUPWADI, BORIVALI EAST.", rightColumnX + 25, currentY)
+        
+        currentY += 5
+        doc.text(`Ph.No : ${companyPhone}, --`, leftColumnX + 25, currentY)
+        doc.text(`Ph.No : ${companyPhone}, --`, rightColumnX + 25, currentY)
+        
+        // Add copy type headers
+        currentY += 10
+        doc.setFontSize(10)
+        doc.setFont(undefined, 'bold')
+        doc.text("Branch Copy", leftColumnX + 10, currentY)
+        doc.text("Booking Receipt", leftColumnX + 60, currentY)
+        doc.text("Customer Copy", rightColumnX + 10, currentY)
+        doc.text("Booking Receipt", rightColumnX + 60, currentY)
+        
+        // Add booking queries contact
+        currentY += 8
+        doc.setFontSize(8)
+        doc.setFont(undefined, 'normal')
+        doc.text(`For Booking Queries Contact : ${companyPhone}/--`, leftColumnX, currentY)
+        doc.text(`For Booking Queries Contact : ${companyPhone}/--`, rightColumnX, currentY)
+        
+        // Add LR Number and booking details
+        currentY += 6
+        doc.text(`Lr Number : ${booking.id}`, leftColumnX, currentY)
+        doc.text(`Lr Number : ${booking.id}`, rightColumnX, currentY)
+        
+        currentY += 6
+        doc.text(`Booking Time : ${booking.bookingDate} ${new Date().toLocaleTimeString()}`, leftColumnX, currentY)
+        doc.text(`Booking Time : ${booking.bookingDate} ${new Date().toLocaleTimeString()}`, rightColumnX, currentY)
+        
+        currentY += 6
+        doc.text(`Lr Type : ${booking.bookingType}`, leftColumnX, currentY)
+        doc.text(`Invoice No.: ${booking.invoiceNo || ''}`, leftColumnX + 50, currentY)
+        doc.text(`Lr Type : ${booking.bookingType}`, rightColumnX, currentY)
+        doc.text(`Invoice No.: ${booking.invoiceNo || ''}`, rightColumnX + 50, currentY)
+        
+        // Add From and To details
+        currentY += 6
+        doc.text(`From : ${booking.consignorName}`, leftColumnX, currentY)
+        doc.text(`To : ${booking.consigneeName}`, leftColumnX + 50, currentY)
+        doc.text(`From : ${booking.consignorName}`, rightColumnX, currentY)
+        doc.text(`To : ${booking.consigneeName}`, rightColumnX + 50, currentY)
+        
+        // Add receiver contact
+        currentY += 6
+        doc.text(`Receiver Contact Number : ${booking.consigneeMobile}`, leftColumnX, currentY)
+        doc.text(`Receiver Contact Number : ${booking.consigneeMobile}`, rightColumnX, currentY)
+        
+        // Add organization and destination
+        currentY += 6
+        doc.text(`Org : BORIVALI PADMAVATI`, leftColumnX, currentY)
+        doc.text(`Dest : ${booking.deliveryDestination}`, leftColumnX + 50, currentY)
+        doc.text(`Org : BORIVALI`, rightColumnX, currentY)
+        doc.text(`Dest : ${booking.deliveryDestination}`, rightColumnX + 50, currentY)
+        
+        doc.text(`CARGO SERV (Mumbai)`, leftColumnX, currentY + 6)
+        doc.text(`PADMAVATI CARGO SERV`, rightColumnX, currentY + 6)
+        
+        // Add article details
+        currentY += 12
+        doc.text(`No. Of Pkgs : ${booking.articles.length}`, leftColumnX, currentY)
+        doc.text(`Art Type : ${booking.articles[0]?.artType || 'BOX'}`, leftColumnX + 50, currentY)
+        doc.text(`No. Of Pkgs : ${booking.articles.length}`, rightColumnX, currentY)
+        doc.text(`Art Type : ${booking.articles[0]?.artType || 'BOX'}`, rightColumnX + 50, currentY)
+        
+        // Add total amount
+        currentY += 6
+        doc.text(`Total : ${booking.totalAmount.toFixed(2)}`, leftColumnX, currentY)
+        doc.text(`Total : ${booking.totalAmount.toFixed(2)}`, rightColumnX, currentY)
+        
+        // Add booking and printing details
+        currentY += 6
+        doc.text(`Booking By : ${booking.bookedBy || 'ADMIN'}`, leftColumnX, currentY)
+        doc.text(`Printed By : ${booking.bookedBy || 'ADMIN'}`, leftColumnX + 50, currentY)
+        doc.text(`Booking By : ${booking.bookedBy || 'ADMIN'}`, rightColumnX, currentY)
+        doc.text(`Printed By : ${booking.bookedBy || 'ADMIN'}`, rightColumnX + 50, currentY)
+        
+        // Add print time
+        currentY += 6
+        const printTime = new Date().toLocaleTimeString()
+        doc.text(`Print Time : ${printTime}`, leftColumnX, currentY)
+        doc.text(`Print Time : ${printTime}`, rightColumnX, currentY)
+        
+        // Add delivery address
+        currentY += 6
+        const deliveryAddress = booking.consigneeAddress || ''
+        doc.text(`Delivery Address : ${deliveryAddress}`, leftColumnX, currentY)
+        doc.text(`Delivery Address : ${deliveryAddress}`, rightColumnX, currentY)
+        
+        // Add delivery contact
+        currentY += 6
+        doc.text(`Delivery Contact : ${booking.consigneeMobile}`, leftColumnX, currentY)
+        doc.text(`Delivery Contact : ${booking.consigneeMobile}`, rightColumnX, currentY)
+        
+        // Add a dividing line between the two copies
+        doc.setDrawColor(0)
+        doc.setLineWidth(0.5)
+        doc.line(105, 10, 105, currentY + 10)
 
         // Create a Blob from the PDF
         const pdfBlob = doc.output("blob")
