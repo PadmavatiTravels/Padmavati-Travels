@@ -62,8 +62,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     consigneeName: "",
     consigneeMobile: "",
     consigneeAddress: "",
-    consignorGST: "",
-    consigneeGST: "",
+   
     formType: "E-Waybill",
     invoiceNo: "",
     declaredValue: 0,
@@ -98,9 +97,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     dropCartage: 0,
     loading: 0,
     lrCharge: 0,
-    sgst: 0,
-    cgst: 0,
-    igst: 0,
     grandTotal: 0
   })
 
@@ -177,17 +173,12 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       }
 
       
-      // Calculate taxes including article amount
+      // Calculate total amount including article amount
       const baseAmount = newCharges.freight + newCharges.pickup + newCharges.dropCartage + 
                          newCharges.loading + newCharges.lrCharge + articleAmount
-
-      // Assuming 2.5% for SGST and CGST, 5% for IGST
-      newCharges.sgst = formData.deliveryDestination !== "Interstate" ? baseAmount * 0.025 : 0
-      newCharges.cgst = formData.deliveryDestination !== "Interstate" ? baseAmount * 0.025 : 0
-      newCharges.igst = formData.deliveryDestination === "Interstate" ? baseAmount * 0.05 : 0
       
       // Calculate grand total including fixed amount
-      newCharges.grandTotal = baseAmount + newCharges.sgst + newCharges.cgst + newCharges.igst + formData.fixAmount
+      newCharges.grandTotal = baseAmount + formData.fixAmount
       
       return newCharges
     })
@@ -234,8 +225,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
           ...prev,
           consigneeName: consigneeDetails.name || prev.consigneeName,
           consigneeMobile: consigneeDetails.mobile || prev.consigneeMobile,
-          consigneeAddress: consigneeDetails.address || prev.consigneeAddress,
-          consigneeGST: consigneeDetails.gstNo || prev.consigneeGST
+          consigneeAddress: consigneeDetails.address || prev.consigneeAddress
         }));
         
         toast({
@@ -408,7 +398,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
           name: formData.consigneeName,
           mobile: formData.consigneeMobile,
           address: formData.consigneeAddress || "",
-          gstNo: formData.consigneeGST || ""
+          
         });
       } catch (saveError) {
         console.error("Error saving consignee details:", saveError);
@@ -472,11 +462,10 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         consignorName: formData.consignorName,
         consignorMobile: formData.consignorMobile,
         consignorAddress: formData.consignorAddress,
-        consignorGST: formData.consignorGST || "",
+       
         consigneeName: formData.consigneeName,
         consigneeMobile: formData.consigneeMobile,
         consigneeAddress: formData.consigneeAddress,
-        consigneeGST: formData.consigneeGST || "",
         invoiceNo: formData.invoiceNo,
         remarks: formData.remarks,
         godown: formData.godown
@@ -714,17 +703,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   {activeSuggestionField === "consignorMobile" && renderSuggestions()}
                 </div>
 
-                <div className="space-y-2 relative">
-                  <Label htmlFor="consignorGST">GST No</Label>
-                  <Input
-                    id="consignorGST"
-                    name="consignorGST"
-                    value={formData.consignorGST || ""}
-                    onChange={handleInputChange}
-                    autoComplete="off"
-                  />
-                  {activeSuggestionField === "consignorGST" && renderSuggestions()}
-                </div>
+
 
                 <div className="space-y-2 relative">
                   <Label htmlFor="consignorAddress">Address</Label>
@@ -775,17 +754,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   {activeSuggestionField === "consigneeMobile" && renderSuggestions()}
                 </div>
 
-                <div className="space-y-2 relative">
-                  <Label htmlFor="consigneeGST">GST No</Label>
-                  <Input
-                    id="consigneeGST"
-                    name="consigneeGST"
-                    value={formData.consigneeGST || ""}
-                    onChange={handleInputChange}
-                    autoComplete="off"
-                  />
-                  {activeSuggestionField === "consigneeGST" && renderSuggestions()}
-                </div>
+
 
                 <div className="space-y-2 relative">
                   <Label htmlFor="consigneeAddress">Address</Label>
@@ -1054,7 +1023,8 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
               </div>
 
               {/* Remarks */}
-              <div className="space-y-2 relative">
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2 relative">
                 <Label htmlFor="remarks">Remarks</Label>
                 <Textarea
                   id="remarks"
@@ -1062,11 +1032,13 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   value={formData.remarks || ""}
                   onChange={handleInputChange}
                   rows={2}
-                  className="resize-none"
+                  className="h-16 w-full resize-none"
+                  placeholder="Enter any remarks"
                 />
                 {activeSuggestionField === "remarks" && renderSuggestions()}
               </div>
             </div>
+          </div>
           </div>
 
           {/* Right Side - Calculation Card */}
@@ -1146,20 +1118,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                     {activeSuggestionField === "lrCharge" && renderSuggestions()}
                   </div>
                   
-                  <div className="border-t pt-2">
-                    <div className="flex justify-between py-1">
-                      <span>SGST:</span>
-                      <span>₹ {charges.sgst.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between py-1">
-                      <span>CGST:</span>
-                      <span>₹ {charges.cgst.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between py-1">
-                      <span>IGST:</span>
-                      <span>₹ {charges.igst.toFixed(2)}</span>
-                    </div>
-                  </div>
+
                   
                   <div className="border-t pt-2">
                     <div className="flex justify-between py-1 font-bold">
