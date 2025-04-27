@@ -10,12 +10,13 @@ import { Plus, Trash2, X } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import type { Article, BookingType } from "@/models/booking"
 import { 
-  createBooking, 
-  calculateWeightAmount, 
-  calculateTotalArticleAmount, 
-  addDropdownOption, 
-  getPreviousValues,
-  savePreviousValues
+  createBooking,
+calculateWeightAmount,
+calculateTotalArticleAmount,
+addDropdownOption,
+getPreviousValues,
+savePreviousValues,
+getBookingById
 } from "@/services/bookingService"
 import {
   saveConsigneeDetails,
@@ -30,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { downloadInvoicePDF } from "@/utils/pdfGenerator"
 import { useAppSelector } from "@/hooks/useAppSelector"
+import { CustomSelect } from "@/components/ui/custom-select"
 
 // Define field history type for storing previous entries
 type FieldHistory = {
@@ -290,15 +292,24 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     const { name, value } = e.target
     const updatedArticles = [...articles]
 
-    if (name === "actualWeight" || name === "chargedWeight" || name === "weightRate" || name === "articleAmount" || name === "quantity") {
+    if (name === "actualWeight" || name === "chargedWeight" || name === "weightRate" || name === "quantity") {
       updatedArticles[index] = {
         ...updatedArticles[index],
         [name]: Number.parseFloat(value) || 0,
       }
 
-      // Recalculate weight amount
-      if (name === "actualWeight" || name === "chargedWeight" || name === "weightRate") {
-        updatedArticles[index].weightAmount = calculateWeightAmount(updatedArticles[index])
+      // Always recalculate weight amount when any of these fields change
+      const article = updatedArticles[index]
+      const weightToUse = article.chargedWeight > 0 ? article.chargedWeight : article.actualWeight
+      updatedArticles[index].weightAmount = weightToUse * article.weightRate
+      
+      // Always recalculate article amount
+      updatedArticles[index].articleAmount = (article.quantity || 1) * (updatedArticles[index].weightAmount || 0)
+    } else if (name === "articleAmount") {
+      // Directly use the article amount entered by the user
+      updatedArticles[index] = {
+        ...updatedArticles[index],
+        articleAmount: Number.parseFloat(value) || 0,
       }
     } else {
       updatedArticles[index] = {
@@ -311,6 +322,18 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     }
 
     setArticles(updatedArticles)
+    
+    // Recalculate total charges whenever articles change
+    const articleAmount = calculateTotalArticleAmount(updatedArticles)
+    setCharges(prev => {
+      const baseAmount = prev.freight + prev.pickup + prev.dropCartage + 
+                       prev.loading + prev.lrCharge + articleAmount
+      
+      return {
+        ...prev,
+        grandTotal: baseAmount + formData.fixAmount
+      }
+    })
   }
 
   const handleArticleTypeChange = (index: number, value: string) => {
@@ -326,21 +349,25 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
   }
 
   const addArticle = () => {
-    setArticles([
-      ...articles,
-      {
-        id: uuidv4(),
-        articleName: "",
-        actualWeight: 0,
-        chargedWeight: 0,
-        artType: articleTypes.length > 0 ? articleTypes[0] : "Box",
-        weightRate: 0,
-        weightAmount: 0,
-        quantity: 1,
-        saidToContain: "",
-        articleAmount: 0
-      },
-    ])
+    const newArticle = {
+      id: uuidv4(),
+      articleName: "",
+      actualWeight: 0,
+      chargedWeight: 0,
+      artType: articleTypes.length > 0 ? articleTypes[0] : "Box",
+      weightRate: 0,
+      weightAmount: 0,
+      quantity: 1,
+      saidToContain: "",
+      articleAmount: 0
+    };
+    
+    // Initialize weight amount calculation
+    const weightToUse = newArticle.chargedWeight > 0 ? newArticle.chargedWeight : newArticle.actualWeight;
+    newArticle.weightAmount = weightToUse * newArticle.weightRate;
+    newArticle.articleAmount = (newArticle.quantity || 1) * (newArticle.weightAmount || 0);
+    
+    setArticles([...articles, newArticle]);
   }
 
   const removeArticle = (index: number) => {
@@ -366,6 +393,20 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       articleAmount,
       totalAmount,
     }
+  }
+  
+  // Calculate the total amount from all articles
+  const calculateTotalArticleAmount = (articles: Article[]): number => {
+    return articles.reduce((total, article) => {
+      // If articleAmount is directly provided, use it
+      if (article.articleAmount && article.articleAmount > 0) {
+        return total + article.articleAmount;
+      }
+      
+      // Otherwise calculate from quantity and weight amount
+      const articleAmount = (article.quantity || 1) * (article.weightAmount || 0);
+      return total + articleAmount;
+    }, 0);
   }
 
   const { articleAmount, totalAmount } = calculateTotals()
@@ -498,16 +539,16 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         variant: "default",
       })
 
-      const newBooking = await createBooking(bookingData)
+      const bookingId = await createBooking(bookingData)
 
       toast({
         title: "Success",
-        description: `Booking created successfully with LR number: ${newBooking.id}`,
+        description: `Booking created successfully with LR number: ${bookingId}`,
         variant: "default",
       })
 
       if (onBookingCreated) {
-        onBookingCreated(newBooking.id)
+        onBookingCreated(bookingId)
       }
 
       if (isNewDestination) {
@@ -527,14 +568,23 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         })
       }
 
-      // Generate and download the invoice
+      // Fetch full booking object before generating invoice PDF
       try {
-        await downloadInvoicePDF(newBooking)
-        toast({
-          title: "Invoice Generated",
-          description: "Invoice has been generated and download started",
-          variant: "default",
-        })
+        const fullBooking = await getBookingById(bookingId)
+        if (fullBooking) {
+          await downloadInvoicePDF(fullBooking)
+          toast({
+            title: "Invoice Generated",
+            description: "Invoice has been generated and download started",
+            variant: "default",
+          })
+        } else {
+          toast({
+            title: "Invoice Generation Failed",
+            description: "Could not fetch booking details for invoice generation",
+            variant: "destructive",
+          })
+        }
       } catch (pdfError) {
         console.error("Error generating PDF:", pdfError)
         toast({
@@ -581,9 +631,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-        
           <Select   
-            
             onValueChange={(value) => handleSelectChange("bookingType", value)}
           >
             <SelectTrigger className="w-40">
@@ -609,48 +657,13 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   <Label htmlFor="deliveryDestination">Delivery Destination</Label>
                   <span className="text-red-600 ml-1">*</span>
                 </div>
-                {isTypingDestination ? (
-                  <div className="flex space-x-2 relative">
-                    <Input
-                      ref={customDestinationRef}
-                      id="customDestination"
-                      name="deliveryDestination"
-                      value={formData.deliveryDestination}
-                      onChange={handleCustomDestinationChange}
-                      placeholder="Enter new destination"
-                      className="flex-grow"
-                      autoComplete="off"
-                    />
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      className="shrink-0"
-                      onClick={cancelCustomDestination}
-                    >
-                      <X size={16} />
-                    </Button>
-                    {activeSuggestionField === "deliveryDestination" && renderSuggestions()}
-                  </div>
-                ) : (
-                  <Select
-                    value={formData.deliveryDestination}
-                    onValueChange={(value) => handleSelectChange("deliveryDestination", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select destination" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {destinations.map((dest) => (
-                        <SelectItem key={dest} value={dest}>
-                          {dest}
-                        </SelectItem>
-                      ))}
-                      <SelectItem value="add-new" className="text-blue-600 font-medium">
-                        + Add New Destination
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
+                <CustomSelect
+                  options={destinations?.filter(Boolean).map(String) || []}
+                  value={formData.deliveryDestination}
+                  onChange={(value) => handleSelectChange("deliveryDestination", value)}
+                  placeholder="Select destination"
+                  addNewItemType="destination"
+                />
               </div>
               <div className="space-y-2 relative">
                 <Label htmlFor="ewaybillNumber">E-Waybill Number</Label>
@@ -703,8 +716,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   {activeSuggestionField === "consignorMobile" && renderSuggestions()}
                 </div>
 
-
-
                 <div className="space-y-2 relative">
                   <Label htmlFor="consignorAddress">Address</Label>
                   <Textarea
@@ -754,8 +765,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   {activeSuggestionField === "consigneeMobile" && renderSuggestions()}
                 </div>
 
-
-
                 <div className="space-y-2 relative">
                   <Label htmlFor="consigneeAddress">Address</Label>
                   <Textarea
@@ -789,242 +798,208 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
               
               <div className="space-y-2">
                 {articles.map((article, index) => (
-                  <div key={article.id} className="grid grid-cols-12 gap-2 items-center">
-                    <div className="col-span-2 relative">
-                      <Input
-                        name="articleName"
-                        value={article.articleName}
-                        onChange={(e) => handleArticleChange(index, e)}
-                        placeholder="Article name"
-                        autoComplete="off"
-                        onFocus={() => {
-                          setActiveSuggestionField(`article_articleName`);
-                          setSearchTerm(article.articleName);
-                        }}
-                      />
-                      {activeSuggestionField === `article_articleName` && renderSuggestions()}
+                  <div key={article.id} className="border p-3 rounded mb-3">
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-2 relative">
+                        <Input
+                          name="articleName"
+                          value={article.articleName}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          placeholder="Article name"
+                          autoComplete="off"
+                          onFocus={() => {
+                            setActiveSuggestionField(`article_articleName`);
+                            setSearchTerm(article.articleName);
+                          }}
+                        />
+                        {activeSuggestionField === `article_articleName` && renderSuggestions()}
+                      </div>
+                      <div className="col-span-1">
+                        <Input
+                          type="number"
+                          name="quantity"
+                          value={article.quantity || 0}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          className="w-full"
+                          min="0"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <CustomSelect
+                          options={[
+                            ...articleTypes,
+                            { value: "AUTO PARTS", label: "AUTO PARTS" },
+                            { value: "BAGS", label: "BAGS" },
+                            { value: "Box", label: "Box" },
+                            { value: "Bundel", label: "Bundel" },
+                            { value: "Cartoon Box", label: "Cartoon Box" },
+                            { value: "Envelope", label: "Envelope" }
+                          ]}
+                          value={article.artType}
+                          onChange={(value) => handleArticleTypeChange(index, value)}
+                          placeholder="Select article type"
+                          addNewItemType="articleType"
+                        />
+                      </div>
+                      <div className="col-span-2 relative">
+                        <Input
+                          name="saidToContain"
+                          placeholder="Said to contain"
+                          value={article.saidToContain || ""}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          autoComplete="off"
+                          onFocus={() => {
+                            setActiveSuggestionField(`article_saidToContain`);
+                            setSearchTerm(article.saidToContain || "");
+                          }}
+                        />
+                        {activeSuggestionField === `article_saidToContain` && renderSuggestions()}
+                      </div>
+                      <div className="col-span-1">
+                        <Input
+                          name="articleAmount"
+                          type="number"
+                          value={article.articleAmount || 0}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          className="w-full"
+                          min="0"
+                        />
+                      </div>
+                      <div className="col-span-3 flex justify-end">
+                        <Button
+                          type="button"
+                          onClick={() => removeArticle(index)}
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 mr-2"
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={addArticle}
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 h-8"
+                        >
+                          Add
+                        </Button>
+                      </div>
                     </div>
-                    <div className="col-span-1">
-                      <Input
-                        type="number"
-                        name="quantity"
-                        value={article.quantity || 0}
-                        onChange={(e) => handleArticleChange(index, e)}
-                        className="w-full"
-                        min="0"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      {isTypingArticleType ? (
-                        <div className="flex space-x-2 relative">
-                          <Input
-                            ref={customArticleTypeRef}
-                            id={`customArticleType-${index}`}
-                            value={article.artType}
-                            onChange={(e) => handleArticleChange(index, e)}
-                            placeholder="Enter new article type"
-                            className="flex-grow"
-                            autoComplete="off"
-                          />
-                          <Button 
-                            type="button" 
-                            variant="outline" 
-                            className="shrink-0"
-                            onClick={() => setIsTypingArticleType(false)}
-                          >
-                            <X size={16} />
-                          </Button>
-                        </div>
-                      ) : (
-  <Select
-    value={article.artType}
-    onValueChange={(value) => {
-      if (value === "add-new") {
-        setIsTypingArticleType(true);
-      } else {
-        handleArticleTypeChange(index, value);
-      }
-    }}
-  >
-    <SelectTrigger>
-      <SelectValue placeholder="Select type" />
-    </SelectTrigger>
-    <SelectContent>
-      {articleTypes.map((type) => (
-        <SelectItem key={type} value={type}>
-          {type}
-        </SelectItem>
-      ))}
-      <SelectItem value="add-new" className="text-blue-600 font-medium">
-        + Add New Article Type
-      </SelectItem>
-    </SelectContent>
-  </Select>
-)}
-                    </div>
-                    <div className="col-span-2 relative">
-                      <Input
-                        name="saidToContain"
-                        placeholder="Said to contain"
-                        value={article.saidToContain || ""}
-                        onChange={(e) => handleArticleChange(index, e)}
-                        autoComplete="off"
-                        onFocus={() => {
-                          setActiveSuggestionField(`article_saidToContain`);
-                          setSearchTerm(article.saidToContain || "");
-                        }}
-                      />
-                      {activeSuggestionField === `article_saidToContain` && renderSuggestions()}
-                    </div>
-                    <div className="col-span-1">
-                      <Input
-                        name="articleAmount"
-                        type="number"
-                        value={article.articleAmount || 0}
-                        onChange={(e) => handleArticleChange(index, e)}
-                        className="w-full"
-                        min="0"
-                      />
-                    </div>
-                    <div className="col-span-3 flex justify-end">
-                      <Button
-                        type="button"
-                        onClick={() => removeArticle(index)}
-                        size="sm"
-                        variant="outline"
-                        className="h-8 w-8 p-0 mr-2"
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={addArticle}
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700 h-8"
-                      >
-                        Add
-                      </Button>
+                    
+                    <div className="grid grid-cols-4 gap-2 mt-2">
+                      <div className="space-y-1">
+                        <Label htmlFor={`actualWeight-${index}`}>Actual Wt</Label>
+                        <Input
+                          id={`actualWeight-${index}`}
+                          name="actualWeight"
+                          type="number"
+                          value={article.actualWeight || ""}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <Label htmlFor={`chargedWeight-${index}`}>Charged Wt</Label>
+                        <Input
+                          id={`chargedWeight-${index}`}
+                          name="chargedWeight"
+                          type="number"
+                          value={article.chargedWeight || ""}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <Label htmlFor={`weightRate-${index}`}>Wt Rate</Label>
+                        <Input
+                          id={`weightRate-${index}`}
+                          name="weightRate"
+                          type="number"
+                          value={article.weightRate || ""}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <Label htmlFor={`weightAmount-${index}`}>Wt Amt</Label>
+                        <Input
+                          id={`weightAmount-${index}`}
+                          name="weightAmount"
+                          type="number"
+                          value={article.weightAmount || ""}
+                          readOnly
+                          className="bg-gray-50"
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
               
-              {/* Weight details */}
-              <div className="grid grid-cols-6 gap-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="actualWeight">Actual Wt</Label>
-                  <Input
-                    id="actualWeight"
-                    name="actualWeight"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={articles[0].actualWeight || ""}
-                    onChange={(e) => handleArticleChange(0, e)}
-                    required
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="chargedWeight">Charged Wt</Label>
-                  <Input
-                    id="chargedWeight"
-                    name="chargedWeight"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={articles[0].chargedWeight || ""}
-                    onChange={(e) => handleArticleChange(0, e)}
-                    required
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="weightRate">Wt Rate</Label>
-                  <Input
-                    id="weightRate"
-                    name="weightRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={articles[0].weightRate || ""}
-                    onChange={(e) => handleArticleChange(0, e)}
-                    required
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="weightAmount">Wt Amt</Label>
-                  <div className="space-y-2">
-                    <Label htmlFor="weightAmount">Wt Amt</Label>
-                    <Input
-                      id="weightAmount"
-                      name="weightAmount"
-                      type="number"
-                      readOnly
-                      value={articles[0].weightAmount || 0}
-                      className="bg-gray-50"
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="declaredValue">Declared Value</Label>
-                    <Input
-                      id="declaredValue"
-                      name="declaredValue"
-                      type="number"
-                      value={formData.declaredValue || 0}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="fixAmount">Fixed Amount</Label>
-                    <Input
-                      id="fixAmount"
-                      name="fixAmount"
-                      type="number"
-                      value={formData.fixAmount || 0}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="declaredValue">Declared Value</Label>
+                <Input
+                  id="declaredValue"
+                  name="declaredValue"
+                  type="number"
+                  value={formData.declaredValue || 0}
+                  onChange={handleInputChange}
+                />
               </div>
-
-              {/* Additional Information */}
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div className="space-y-2 relative">
-                  <Label htmlFor="godown">Godown</Label>
-                  <Input
-                    id="godown"
-                    name="godown"
-                    value={formData.godown || ""}
-                    onChange={handleInputChange}
-                    autoComplete="off"
-                  />
-                  {activeSuggestionField === "godown" && renderSuggestions()}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
-                  <Select
-                    value={formData.status}
-                    onValueChange={(value) => handleSelectChange("status", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Booked">Booked</SelectItem>
-                      <SelectItem value="In Transit">In Transit</SelectItem>
-                      <SelectItem value="Delivered">Delivered</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="fixAmount">Fixed Amount</Label>
+                <Input
+                  id="fixAmount"
+                  name="fixAmount"
+                  type="number"
+                  value={formData.fixAmount || 0}
+                  onChange={handleInputChange}
+                />
               </div>
+            </div>
 
-              {/* Remarks */}
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div className="space-y-2 relative">
+            {/* Additional Information */}
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="space-y-2 relative">
+                <Label htmlFor="godown">Godown</Label>
+                <Input
+                  id="godown"
+                  name="godown"
+                  value={formData.godown || ""}
+                  onChange={handleInputChange}
+                  autoComplete="off"
+                />
+                {activeSuggestionField === "godown" && renderSuggestions()}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => handleSelectChange("status", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Booked">Booked</SelectItem>
+                    <SelectItem value="Dispatched">Dispatched</SelectItem>
+                    <SelectItem value="In Transit">In Transit</SelectItem>
+                    <SelectItem value="Received">Received</SelectItem>
+                    <SelectItem value="Delivered">Delivered</SelectItem>
+                    <SelectItem value="Not Received">Not Received</SelectItem>
+                    <SelectItem value="Not Dispatched">Not Dispatched</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Remarks */}
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="space-y-2 relative">
                 <Label htmlFor="remarks">Remarks</Label>
                 <Textarea
                   id="remarks"
@@ -1039,9 +1014,8 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
               </div>
             </div>
           </div>
-          </div>
-
-          {/* Right Side - Calculation Card */}
+          
+          {/* Right Side - Charges Card */}
           <div className="col-span-1">
             <Card className="h-full">
               <CardContent className="pt-4">
@@ -1118,8 +1092,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                     {activeSuggestionField === "lrCharge" && renderSuggestions()}
                   </div>
                   
-
-                  
                   <div className="border-t pt-2">
                     <div className="flex justify-between py-1 font-bold">
                       <span>Grand Total:</span>
@@ -1150,7 +1122,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         </div>
       </form>
     </div>
-  );
+);
 }
 
 export default BookingForm;

@@ -164,6 +164,18 @@ const bookingSlice = createSlice({
     },
     addRecentBooking: (state, action: PayloadAction<Booking>) => {
       state.recentBookings = [action.payload, ...state.recentBookings].slice(0, 10);
+    },
+    // Add this new reducer
+    addDestination: (state, action: PayloadAction<string>) => {
+      if (!state.destinations.includes(action.payload)) {
+        state.destinations.push(action.payload);
+      }
+    },
+    // Add this new reducer
+    addArticleType: (state, action: PayloadAction<string>) => {
+      if (!state.articleTypes.includes(action.payload)) {
+        state.articleTypes.push(action.payload);
+      }
     }
   },
   extraReducers: (builder) => {
@@ -197,9 +209,11 @@ const bookingSlice = createSlice({
 export const { 
   setCurrentBooking, 
   updateCurrentBooking, 
-  clearCurrentBooking,
-  setRecentBookings,
-  addRecentBooking
+  clearCurrentBooking, 
+  setRecentBookings, 
+  addRecentBooking,
+  addDestination,
+  addArticleType
 } = bookingSlice.actions;
 
 export default bookingSlice.reducer;

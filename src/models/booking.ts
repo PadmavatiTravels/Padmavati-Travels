@@ -50,4 +50,6 @@ export interface Booking {
   // PDF Invoice
   invoiceUrl?: string
   pdfUrl?: string // For backward compatibility
+
+  bookedBy?: string
 }

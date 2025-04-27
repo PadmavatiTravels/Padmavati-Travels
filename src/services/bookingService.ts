@@ -1,4 +1,4 @@
-import type { Article, BookingType } from "@/models/booking";
+import type { Article, BookingType, Booking } from "@/models/booking";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -25,45 +25,57 @@ export const calculateTotalArticleAmount = (articles: Article[]): number => {
   return articles.reduce((total, article) => total + (article.weightAmount || 0), 0);
 };
 
-// Helper function to generate custom booking id starting with PT and timestamp
-const generateBookingId = (): string => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
-  return `PT${year}${month}${day}${hours}${minutes}${seconds}`;
+// Helper function to generate custom booking id starting with PT100 and incrementing
+// Helper function to generate sequential booking IDs starting with PT100
+export const generateBookingId = async (): Promise<string> => {
+  try {
+    // Use imported db instance instead of calling getFirestore()
+    // Get the latest booking to determine the next ID
+    const bookingsRef = collection(db, "bookings");
+    const q = query(bookingsRef, orderBy("id", "desc"), limit(1));
+    const querySnapshot = await getDocs(q);
+    
+    let nextNumber = 100; // Start with PT100 if no bookings exist
+    
+    if (!querySnapshot.empty) {
+      const latestBooking = querySnapshot.docs[0].data();
+      const latestId = latestBooking.id as string;
+      
+      // Extract the number part from the ID (assuming format PT100, PT101, etc.)
+      if (latestId && latestId.startsWith("PT")) {
+        const numberPart = latestId.substring(2);
+        const currentNumber = parseInt(numberPart, 10);
+        
+        if (!isNaN(currentNumber)) {
+          nextNumber = currentNumber + 1;
+        }
+      }
+    }
+    
+    return `PT${nextNumber}`;
+  } catch (error) {
+    console.error("Error generating booking ID:", error);
+    // Fallback to a static ID if there's an error
+    return `PT100`; // Default to PT100 in case of error
+  }
 };
 
 // Function to create a new booking
-export const createBooking = async (bookingData: any) => {
+export const createBooking = async (bookingData: Partial<Booking>): Promise<string> => {
   try {
-    const bookingId = generateBookingId();
-
-    // Replace empty strings with null values
-    const sanitizedBookingData = Object.entries(bookingData).reduce((acc, [key, value]) => {
-      // Convert empty strings to null (Firestore accepts null but not empty strings)
-      acc[key] = value === "" ? null : value;
-      return acc;
-    }, {} as Record<string, any>);
-
-    // Add booking to Firestore with custom id
-    await setDoc(doc(db, "bookings", bookingId), {
-      ...sanitizedBookingData,
+    // Use imported db instance instead of calling getFirestore()
+    const bookingId = await generateBookingId();
+    
+    const newBooking: Booking = {
       id: bookingId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-
-    // Complete booking data to return
-    const completeBooking = {
-      ...bookingData, // Return original data with empty strings
-      id: bookingId,
+      ...bookingData,
     };
 
-    return completeBooking;
+    // Save to Firestore
+    const bookingRef = doc(db, "bookings", bookingId);
+    await setDoc(bookingRef, newBooking);
+    
+    return bookingId;
   } catch (error) {
     console.error("Error creating booking:", error);
     throw error;

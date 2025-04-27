@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, KeyboardEvent } from "react";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,8 +18,8 @@ import {
 import { useAppDispatch } from "@/hooks/useAppDispatch";
 import { addDestination, addArticleType } from "@/store/bookingSlice";
 
-interface CustomSelectProps {
-  options: string[];
+interface CustomSelectProps { 
+  options?: string[]; // Make it optional
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -30,20 +29,23 @@ interface CustomSelectProps {
   className?: string;
 }
 
-export function CustomSelect({
-  options,
-  value,
-  onChange,
-  placeholder = "Select an option",
-  label,
-  addNewItemType,
-  disabled = false,
-  className,
+export function CustomSelect({ 
+  options = [], // Add default empty array
+  value, 
+  onChange, 
+  placeholder = "Select an option", 
+  label, 
+  addNewItemType, 
+  disabled = false, 
+  className, 
 }: CustomSelectProps) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const dispatch = useAppDispatch();
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Sanitize options to ensure they're all strings
+  const sanitizedOptions = options.filter(option => typeof option === 'string');
 
   const handleAddNew = () => {
     if (!inputValue.trim()) return;
@@ -60,7 +62,7 @@ export function CustomSelect({
   };
 
   const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !options.includes(inputValue) && inputValue.trim() !== "") {
+    if (e.key === "Enter" && !sanitizedOptions.includes(inputValue) && inputValue.trim() !== "") {
       e.preventDefault();
       handleAddNew();
     }
@@ -110,14 +112,14 @@ export function CustomSelect({
                 {inputValue.trim() === "" && "No results found."}
               </CommandEmpty>
               <CommandGroup>
-                {options
+                {sanitizedOptions
                   .filter(option => 
                     option.toLowerCase().includes(inputValue.toLowerCase())
                   )
                   .map((option) => (
                     <CommandItem
-                      key={option}
-                      value={option}
+                      key={String(option)}
+                      value={String(option)}
                       onSelect={(currentValue) => {
                         onChange(currentValue);
                         setOpen(false);
@@ -130,7 +132,7 @@ export function CustomSelect({
                           value === option ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      {option}
+                      {String(option)}
                     </CommandItem>
                   ))}
               </CommandGroup>

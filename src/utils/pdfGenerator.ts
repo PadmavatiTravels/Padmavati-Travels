@@ -2,7 +2,7 @@ import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import type { Booking } from "../models/booking"
 import { store } from "../store/store"
-import { db } from "@/lib/firebase"
+import { db } from "../lib/firebase"
 import { doc, updateDoc } from "firebase/firestore"
 import { uploadFileToDrive } from "./googleDrive"
 
@@ -11,8 +11,13 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
   return new Promise((resolve, reject) => {
     try {
       // Get company settings from Redux store
-      const { companyName, companyAddress, companyPhone, companyEmail, companyLogo } =
+      let { companyName, companyAddress, companyPhone, companyEmail, companyLogo } =
         store.getState().settings
+
+      // Use default logo URL if companyLogo is not set
+      if (!companyLogo) {
+        companyLogo = "https://i.postimg.cc/W35H74zT/Blue-and-Yellow-Illustrative-Travel-Agency-Logo.png"
+      }
 
       // Create a new PDF document
       const doc = new jsPDF()
@@ -47,57 +52,88 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
       }
 
       function addContent() {
-        // Set up the two-column layout with more space between columns
-        const leftColumnX = 10
-        const rightColumnX = 105
+        // Set up the two-column layout
+        const leftColumnX = 14
+        const rightColumnX = 110
         const columnWidth = 85
         let currentY = 10
 
-        // Helper function to truncate text to fit within width
-        const truncateText = (text: string, maxWidth: number): string => {
-          if (!text) return '';
+        // Helper function to wrap text instead of truncating
+        const wrapText = (text: string, maxWidth: number, doc: jsPDF): string[] => {
+          if (!text) return [''];
           
-          // Measure text width
-          const textWidth = doc.getStringUnitWidth(text) * doc.getFontSize() / doc.internal.scaleFactor;
+          // Split the text into words
+          const words = text.split(' ');
+          const lines: string[] = [];
+          let currentLine = '';
           
-          if (textWidth <= maxWidth) return text;
-          
-          // Truncate and add ellipsis
-          let truncated = text;
-          while (doc.getStringUnitWidth(truncated + '...') * doc.getFontSize() / doc.internal.scaleFactor > maxWidth && truncated.length > 0) {
-            truncated = truncated.slice(0, -1);
+          // Process each word
+          for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            // Test if adding this word would exceed the width
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            const testWidth = doc.getStringUnitWidth(testLine) * doc.getFontSize() / doc.internal.scaleFactor;
+            
+            if (testWidth > maxWidth) {
+              // If the line would be too long, add the current line to lines array
+              lines.push(currentLine);
+              // Start a new line with the current word
+              currentLine = word;
+            } else {
+              // Otherwise, add the word to the current line
+              currentLine = testLine;
+            }
           }
           
-          return truncated + '...';
+          // Add the last line
+          if (currentLine) {
+            lines.push(currentLine);
+          }
+          
+          return lines;
         };
-
-        // Add company name for both copies - adjusted font size and spacing
-        doc.setFontSize(11)
+      
+        // Helper function to add wrapped text and update Y position
+        const addWrappedText = (text: string, x: number, y: number, maxWidth: number, lineHeight: number = 4): number => {
+          const lines = wrapText(text, maxWidth, doc);
+          let newY = y;
+          
+          for (let i = 0; i < lines.length; i++) {
+            doc.text(lines[i], x, newY);
+            newY += lineHeight;
+          }
+          
+          // Return the new Y position after all lines
+          return newY;
+        };
+      
+        // Add company name for both copies
+        doc.setFontSize(12)
         doc.setFont(undefined, 'bold')
         doc.text("MUMBAI - BORIVALI", leftColumnX + 25, currentY + 5)
         doc.text("MUMBAI - BORIVALI", rightColumnX + 25, currentY + 5)
         
-        doc.setFontSize(11)
+        doc.setFontSize(12)
         doc.text("PADMAVATI", leftColumnX + 25, currentY + 10)
         doc.text("PADMAVATI", rightColumnX + 25, currentY + 10)
         
         doc.text("CARGO SERV", leftColumnX + 25, currentY + 15)
         doc.text("CARGO SERV", rightColumnX + 25, currentY + 15)
         
-        // Add location details - reduced font size to prevent overlap
+        // Add location details
         currentY += 20
-        doc.setFontSize(7)
+        doc.setFontSize(8)
         doc.setFont(undefined, 'normal')
         doc.text("NEAR AXIS BANK BRIDGE ENDING,", leftColumnX + 25, currentY)
         doc.text("NEAR AXIS BANK BRIDGE ENDING,", rightColumnX + 25, currentY)
         
-        currentY += 4
+        currentY += 5
         doc.text("KULUPWADI, BORIVALI EAST.", leftColumnX + 25, currentY)
         doc.text("KULUPWADI, BORIVALI EAST.", rightColumnX + 25, currentY)
         
-        currentY += 4
-        doc.text(`Ph.No : ${companyPhone}, --`, leftColumnX + 25, currentY)
-        doc.text(`Ph.No : ${companyPhone}, --`, rightColumnX + 25, currentY)
+        currentY += 5
+        doc.text(`Ph.No : 98926 16165, --`, leftColumnX + 25, currentY)
+        doc.text(`Ph.No : 98926 16165, --`, rightColumnX + 25, currentY)
         
         // Add copy type headers - increased spacing
         currentY += 8
@@ -108,12 +144,12 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.text("Customer Copy", rightColumnX + 10, currentY)
         doc.text("Booking Receipt", rightColumnX + 50, currentY)
         
-        // Add booking queries contact - increased spacing
-        currentY += 7
-        doc.setFontSize(7)
+        // Add booking queries contact
+        currentY += 8
+        doc.setFontSize(8)
         doc.setFont(undefined, 'normal')
-        doc.text(`For Booking Queries Contact : ${companyPhone}/--`, leftColumnX, currentY)
-        doc.text(`For Booking Queries Contact : ${companyPhone}/--`, rightColumnX, currentY)
+        doc.text(`For Booking Queries Contact : 98926 16165/--`, leftColumnX, currentY)
+        doc.text(`For Booking Queries Contact : 98926 16165/--`, rightColumnX, currentY)
         
         // Add LR Number and booking details - increased spacing between lines
         currentY += 5
@@ -130,65 +166,89 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.text(`Lr Type : ${booking.bookingType}`, rightColumnX, currentY)
         doc.text(`Invoice No.: ${booking.invoiceNo || ''}`, rightColumnX + 40, currentY)
         
-        // Add From and To details - truncate long text and increase spacing
+        // Add From and To details with text wrapping
         currentY += 5
-        const consignorName = truncateText(booking.consignorName, 35);
-        const consigneeName = truncateText(booking.consigneeName, 35);
-        doc.text(`From : ${consignorName}`, leftColumnX, currentY)
-        doc.text(`To : ${consigneeName}`, leftColumnX + 40, currentY)
-        doc.text(`From : ${consignorName}`, rightColumnX, currentY)
-        doc.text(`To : ${consigneeName}`, rightColumnX + 40, currentY)
         
-        // Add receiver contact - increased spacing
-        currentY += 5
+        // From field - left column
+        doc.text(`From :`, leftColumnX, currentY)
+        const fromTextY = addWrappedText(booking.consignorName, leftColumnX + 20, currentY, 30, 4)
+        
+        // To field - left column (on the same line as From)
+        doc.text(`To :`, leftColumnX + 50, currentY)
+        const toTextY = addWrappedText(booking.consigneeName, leftColumnX + 60, currentY, 30, 4)
+        
+        // From field - right column
+        doc.text(`From :`, rightColumnX, currentY)
+        const fromRightY = addWrappedText(booking.consignorName, rightColumnX + 20, currentY, 30, 4)
+        
+        // To field - right column (on the same line as From)
+        doc.text(`To :`, rightColumnX + 50, currentY)
+        const toRightY = addWrappedText(booking.consigneeName, rightColumnX + 60, currentY, 30, 4)
+        
+        // Update currentY to the maximum Y position after all text
+        currentY = Math.max(fromTextY, toTextY, fromRightY, toRightY) + 6
+        
+        // Add receiver contact
         doc.text(`Receiver Contact : ${booking.consigneeMobile}`, leftColumnX, currentY)
         doc.text(`Receiver Contact : ${booking.consigneeMobile}`, rightColumnX, currentY)
         
-        // Add organization and destination - increased spacing and truncated text
+        // Add organization and destination with text wrapping
         currentY += 5
-        const destination = truncateText(booking.deliveryDestination, 20);
         doc.text(`Org : BORIVALI PADMAVATI`, leftColumnX, currentY)
-        doc.text(`Dest : ${destination}`, leftColumnX + 40, currentY)
-        doc.text(`Org : BORIVALI`, rightColumnX, currentY)
-        doc.text(`Dest : ${destination}`, rightColumnX + 40, currentY)
         
-        currentY += 5
+        // Destination with wrapping
+        doc.text(`Dest :`, leftColumnX + 40, currentY)
+        const destLeftY = addWrappedText(booking.deliveryDestination, leftColumnX + 50, currentY, 30, 4)
+        
+        doc.text(`Org : BORIVALI`, rightColumnX, currentY)
+        
+        doc.text(`Dest :`, rightColumnX + 40, currentY)
+        const destRightY = addWrappedText(booking.deliveryDestination, rightColumnX + 50, currentY, 30, 4)
+        
+        // Update currentY to the maximum Y position
+        currentY = Math.max(destLeftY, destRightY) + 6
+        
         doc.text(`CARGO SERV (Mumbai)`, leftColumnX, currentY)
         doc.text(`PADMAVATI CARGO SERV`, rightColumnX, currentY)
         
-        // Add article details - increased spacing
+        // Add article details
         currentY += 7
-        doc.text(`No. Of Pkgs : ${booking.articles.length}`, leftColumnX, currentY)
-        doc.text(`Art Type : ${booking.articles[0]?.artType || 'BOX'}`, leftColumnX + 40, currentY)
-        doc.text(`No. Of Pkgs : ${booking.articles.length}`, rightColumnX, currentY)
-        doc.text(`Art Type : ${booking.articles[0]?.artType || 'BOX'}`, rightColumnX + 40, currentY)
+        const articles = Array.isArray(booking.articles) ? booking.articles : []
+        doc.text(`No. Of Pkgs : ${articles.length}`, leftColumnX, currentY)
+        doc.text(`Art Type : ${articles[0]?.artType || 'BOX'}`, leftColumnX + 40, currentY)
+        doc.text(`No. Of Pkgs : ${articles.length}`, rightColumnX, currentY)
+        doc.text(`Art Type : ${articles[0]?.artType || 'BOX'}`, rightColumnX + 40, currentY)
         
-        // Add total amount - increased spacing
+        // Add total amount
         currentY += 5
-        doc.text(`Total : ${booking.totalAmount.toFixed(2)}`, leftColumnX, currentY)
-        doc.text(`Total : ${booking.totalAmount.toFixed(2)}`, rightColumnX, currentY)
+        doc.text(`Total : ${(booking.totalAmount ?? 0).toFixed(2)}`, leftColumnX, currentY)
+        doc.text(`Total : ${(booking.totalAmount ?? 0).toFixed(2)}`, rightColumnX, currentY)
         
-        // Add booking and printing details - increased spacing and adjusted position
+        // Add booking and printing details
         currentY += 5
         doc.text(`Booking By : ${booking.bookedBy || 'ADMIN'}`, leftColumnX, currentY)
         doc.text(`Printed By : ${booking.bookedBy || 'ADMIN'}`, leftColumnX + 40, currentY)
         doc.text(`Booking By : ${booking.bookedBy || 'ADMIN'}`, rightColumnX, currentY)
         doc.text(`Printed By : ${booking.bookedBy || 'ADMIN'}`, rightColumnX + 40, currentY)
         
-        // Add print time - increased spacing
+        // Add print time
         currentY += 5
         const printTime = new Date().toLocaleTimeString()
         doc.text(`Print Time : ${printTime}`, leftColumnX, currentY)
         doc.text(`Print Time : ${printTime}`, rightColumnX, currentY)
         
-        // Add delivery address - truncate long address and increased spacing
+        // Add delivery address with text wrapping
         currentY += 5
-        const deliveryAddress = truncateText(booking.consigneeAddress || '', 70);
-        doc.text(`Delivery Address : ${deliveryAddress}`, leftColumnX, currentY)
-        doc.text(`Delivery Address : ${deliveryAddress}`, rightColumnX, currentY)
+        doc.text(`Delivery Address :`, leftColumnX, currentY)
+        const addrLeftY = addWrappedText(booking.consigneeAddress || '', leftColumnX + 30, currentY, 60, 4)
         
-        // Add delivery contact - increased spacing
-        currentY += 5
+        doc.text(`Delivery Address :`, rightColumnX, currentY)
+        const addrRightY = addWrappedText(booking.consigneeAddress || '', rightColumnX + 30, currentY, 60, 4)
+        
+        // Update currentY to the maximum Y position
+        currentY = Math.max(addrLeftY, addrRightY) + 6
+        
+        // Add delivery contact
         doc.text(`Delivery Contact : ${booking.consigneeMobile}`, leftColumnX, currentY)
         doc.text(`Delivery Contact : ${booking.consigneeMobile}`, rightColumnX, currentY)
         
@@ -196,7 +256,7 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.setDrawColor(0)
         doc.setLineWidth(0.5)
         doc.line(103, 10, 103, currentY + 10)
-
+      
         // Create a Blob from the PDF
         const pdfBlob = doc.output("blob")
         resolve(pdfBlob)
