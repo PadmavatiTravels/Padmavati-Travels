@@ -288,69 +288,76 @@ export const uploadInvoicePDF = async (booking: Booking, pdfBlob: Blob, options?
     return null
   }
   try {
+    // Use the booking ID (LR number) for the filename
+    const filename = `${booking.id}.pdf`;
+    
     // Upload the PDF blob to Google Drive
-    const downloadURL = await uploadFileToDrive(pdfBlob, `${booking.id}_invoice.pdf`)
+    const downloadURL = await uploadFileToDrive(pdfBlob, filename);
 
     // Update the booking record in Firestore with the PDF URL
-    const bookingRef = doc(db, "bookings", booking.id)
+    const bookingRef = doc(db, "bookings", booking.id);
     await updateDoc(bookingRef, {
       pdfUrl: downloadURL,
       invoiceUrl: downloadURL, // For backward compatibility
       updatedAt: new Date().toISOString(),
-    })
+    });
 
-    return downloadURL
+    return downloadURL;
   } catch (error) {
-    console.error("Error uploading PDF to Google Drive:", error)
-    throw error
+    console.error("Error uploading PDF to Google Drive:", error);
+    throw error;
   }
-}
+};
 
 // Common download function
 export const downloadInvoicePDF = async (booking: Booking, filename?: string, options?: { skipUpload?: boolean }): Promise<void> => {
   try {
+    // Use the booking ID (LR number) for the filename if not specified
+    const defaultFilename = `${booking.id}_invoice.pdf`;
+    
     // Check if the booking already has a PDF URL
     if ((booking.pdfUrl || booking.invoiceUrl) && !options?.skipUpload) {
       // Use the existing PDF URL
-      const pdfUrl = booking.pdfUrl || booking.invoiceUrl
-      const link = document.createElement("a")
-      link.href = pdfUrl
-      link.download = filename || `${booking.id}_invoice.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      const pdfUrl = booking.pdfUrl || booking.invoiceUrl;
+      const link = document.createElement("a");
+      link.href = pdfUrl;
+      link.download = filename || defaultFilename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } else {
       // Generate a new PDF
-      const pdfBlob = await generateInvoicePDF(booking, options)
+      const pdfBlob = await generateInvoicePDF(booking, options);
 
       // Upload to Firebase and get URL if not skipped
-      let pdfUrl: string | null = null
+      let pdfUrl: string | null = null;
       if (!options?.skipUpload) {
         try {
-          pdfUrl = await uploadInvoicePDF(booking, pdfBlob, options)
+          // Use the booking ID (LR number) for the uploaded file name
+          pdfUrl = await uploadInvoicePDF(booking, pdfBlob, options);
         } catch (uploadError) {
-          console.error("Error uploading PDF, continuing with download:", uploadError)
+          console.error("Error uploading PDF, continuing with download:", uploadError);
         }
       }
 
       // Use local URL if upload skipped or failed
       if (!pdfUrl) {
-        pdfUrl = URL.createObjectURL(pdfBlob)
+        pdfUrl = URL.createObjectURL(pdfBlob);
       }
 
-      const link = document.createElement("a")
-      link.href = pdfUrl
-      link.download = filename || `${booking.id}_invoice.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      setTimeout(() => URL.revokeObjectURL(pdfUrl), 100)
+      const link = document.createElement("a");
+      link.href = pdfUrl;
+      link.download = filename || defaultFilename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(pdfUrl), 100);
     }
   } catch (error) {
-    console.error("Error downloading invoice PDF:", error)
-    throw error
+    console.error("Error downloading invoice PDF:", error);
+    throw error;
   }
-}
+};
 
 // Common view function
 export const viewInvoicePDF = async (booking: Booking, options?: { skipUpload?: boolean }): Promise<void> => {

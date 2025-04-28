@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "./ui/button"
+import { Input } from "./ui/input"
+import { Label } from "./ui/label"
+import { Card, CardContent } from "./ui/card"
 import { Plus, Trash2, X } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
-import type { Article, BookingType } from "@/models/booking"
+import type { Article, BookingType } from "../models/booking"
 import { 
   createBooking,
 calculateWeightAmount,
@@ -17,21 +17,24 @@ addDropdownOption,
 getPreviousValues,
 savePreviousValues,
 getBookingById
-} from "@/services/bookingService"
+} from "../services/bookingService"
 import {
   saveConsigneeDetails,
   getConsigneeByDestination
-} from "@/services/consigneeService"
+} from "../services/consigneeService"
 import {
   saveDestinationAddress,
   fetchDestinationAddress
-} from "@/services/destinationService"
-import { useToast } from "@/hooks/use-toast"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { downloadInvoicePDF } from "@/utils/pdfGenerator"
-import { useAppSelector } from "@/hooks/useAppSelector"
-import { CustomSelect } from "@/components/ui/custom-select"
+} from "../services/destinationService"
+import { useToast } from "../hooks/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
+import { Textarea } from "./ui/textarea"
+import { downloadInvoicePDF } from "../utils/pdfGenerator"
+import { useAppSelector } from "../hooks/useAppSelector"
+import { useAppDispatch } from "../hooks/useAppDispatch"
+import { fetchDropdownOptions, addDestinationAsync, addArticleTypeAsync } from "../store/bookingSlice"
+import { CustomSelect } from "./ui/custom-select"
+import { useAuth } from "../contexts/AuthContext"
 
 // Define field history type for storing previous entries
 type FieldHistory = {
@@ -41,8 +44,47 @@ type FieldHistory = {
 const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: string) => void }> = ({ formType, onBookingCreated }) => {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const dispatch = useAppDispatch()
+  const { currentUser } = useAuth()
+  
+  // Check if user is authenticated
+  useEffect(() => {
+    if (!currentUser) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to access this page",
+        variant: "destructive",
+      })
+      navigate("/login")
+    }
+  }, [currentUser, navigate, toast])
+  
+  // Default locations and article types to ensure they're always available
+  const defaultDestinations = ["Hyderabad", "Latur", "Nagpur", "Hingoli"]
+  const defaultArticleTypes = ["BOX", "AUTO PARTS"]
+  
+  // Dispatch fetchDropdownOptions on mount to load destinations and articleTypes
+  useEffect(() => {
+    dispatch(fetchDropdownOptions())
+  }, [dispatch])
+  
+  const userId = currentUser?.uid || useAppSelector(state => state.auth.currentUser?.uid)
+  const userEmail = currentUser?.email || ""
   const destinations = useAppSelector(state => state.booking.destinations)
   const articleTypes = useAppSelector(state => state.booking.articleTypes)
+  
+  // Combine default destinations with those from Redux
+  const allDestinations = [...new Set([
+    ...(destinations?.filter(Boolean).map(String) || []),
+    ...defaultDestinations
+  ])]
+  
+  // Combine default article types with those from Redux
+  const allArticleTypes = [...new Set([
+    ...(articleTypes || []),
+    ...defaultArticleTypes
+  ])]
+  
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isTypingDestination, setIsTypingDestination] = useState(false)
   const [isTypingArticleType, setIsTypingArticleType] = useState(false)
@@ -108,7 +150,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       articleName: "",
       actualWeight: 0,
       chargedWeight: 0,
-      artType: articleTypes.length > 0 ? articleTypes[0] : "Box",
+      artType: allArticleTypes.length > 0 ? allArticleTypes[0] : "Box",
       weightRate: 0,
       weightAmount: 0,
       quantity: 1,
@@ -354,7 +396,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       articleName: "",
       actualWeight: 0,
       chargedWeight: 0,
-      artType: articleTypes.length > 0 ? articleTypes[0] : "Box",
+      artType: allArticleTypes.length > 0 ? allArticleTypes[0] : "Box",
       weightRate: 0,
       weightAmount: 0,
       quantity: 1,
@@ -480,19 +522,21 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     try {
       const today = new Date().toISOString().split("T")[0]
 
-      // Check if destination is new and save it to Firebase
-      const isNewDestination = !destinations.includes(formData.deliveryDestination)
-      if (isNewDestination && formData.deliveryDestination) {
-        await addDropdownOption("destinations", formData.deliveryDestination)
+      // Check if destination is new and save it to Firestore via redux thunk
+      const isNewDestination = !allDestinations.includes(formData.deliveryDestination)
+      if (isNewDestination && formData.deliveryDestination && userId) {
+        await dispatch(addDestinationAsync({ destination: formData.deliveryDestination, userId })).unwrap()
       }
 
-      // Check for new article types and save them to Firebase
+      // Check for new article types and save them to Firestore via redux thunk
       const newArticleTypes: string[] = []
       for (const article of articles) {
-        if (article.artType && !articleTypes.includes(article.artType)) {
+        if (article.artType && !allArticleTypes.includes(article.artType)) {
           if (!newArticleTypes.includes(article.artType)) {
             newArticleTypes.push(article.artType)
-            await addDropdownOption("articleTypes", article.artType)
+            if (userId) {
+              await dispatch(addArticleTypeAsync({ articleType: article.artType, userId })).unwrap()
+            }
           }
         }
       }
@@ -531,6 +575,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         totalArticles: articles.length,
         charges,
         status: formData.status,
+        bookedBy: currentUser?.email || "ADMIN",
       }
 
       toast({
@@ -658,7 +703,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   <span className="text-red-600 ml-1">*</span>
                 </div>
                 <CustomSelect
-                  options={destinations?.filter(Boolean).map(String) || []}
+                  options={allDestinations}
                   value={formData.deliveryDestination}
                   onChange={(value) => handleSelectChange("deliveryDestination", value)}
                   placeholder="Select destination"
@@ -827,7 +872,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                       <div className="col-span-2">
                         <CustomSelect
                           options={[
-                            ...articleTypes,
+                            ...allArticleTypes,
                             { value: "AUTO PARTS", label: "AUTO PARTS" },
                             { value: "BAGS", label: "BAGS" },
                             { value: "Box", label: "Box" },

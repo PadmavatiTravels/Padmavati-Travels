@@ -25,37 +25,70 @@ export const calculateTotalArticleAmount = (articles: Article[]): number => {
   return articles.reduce((total, article) => total + (article.weightAmount || 0), 0);
 };
 
-// Helper function to generate custom booking id starting with PT100 and incrementing
-// Helper function to generate sequential booking IDs starting with PT100
+
 export const generateBookingId = async (): Promise<string> => {
   try {
-    // Use imported db instance instead of calling getFirestore()
-    // Get the latest booking to determine the next ID
+    // Try two different queries to ensure we get the latest booking
+    
+    // First, try querying by the 'id' field in the document
     const bookingsRef = collection(db, "bookings");
-    const q = query(bookingsRef, orderBy("id", "desc"), limit(1));
-    const querySnapshot = await getDocs(q);
+    const q1 = query(bookingsRef, orderBy("id", "desc"), limit(1));
+    const querySnapshot1 = await getDocs(q1);
+    
+    let latestBooking = null;
+    let latestId = "";
+    
+    if (!querySnapshot1.empty) {
+      latestBooking = querySnapshot1.docs[0].data();
+      latestId = latestBooking.id as string;
+      console.log("Found booking by 'id' field:", latestId);
+    } else {
+      console.log("No bookings found by 'id' field, checking document IDs");
+      
+      // If no results, try getting all documents and sort them manually
+      const allBookingsSnapshot = await getDocs(collection(db, "bookings"));
+      
+      if (!allBookingsSnapshot.empty) {
+        // Convert to array and sort by document ID
+        const bookings = allBookingsSnapshot.docs.map(doc => ({
+          docId: doc.id,
+          ...doc.data()
+        }));
+        
+        // Filter for IDs that start with PT and sort them
+        const ptBookings = bookings
+          .filter(b => b.docId.startsWith("PT"))
+          .sort((a, b) => {
+            const numA = parseInt(a.docId.substring(2), 10);
+            const numB = parseInt(b.docId.substring(2), 10);
+            return numB - numA; // Descending order
+          });
+        
+        if (ptBookings.length > 0) {
+          latestBooking = ptBookings[0];
+          latestId = ptBookings[0].docId;
+          console.log("Found booking by document ID:", latestId);
+        }
+      }
+    }
     
     let nextNumber = 100; // Start with PT100 if no bookings exist
     
-    if (!querySnapshot.empty) {
-      const latestBooking = querySnapshot.docs[0].data();
-      const latestId = latestBooking.id as string;
+    if (latestId && latestId.startsWith("PT")) {
+      const numberPart = latestId.substring(2);
+      const currentNumber = parseInt(numberPart, 10);
       
-      // Extract the number part from the ID (assuming format PT100, PT101, etc.)
-      if (latestId && latestId.startsWith("PT")) {
-        const numberPart = latestId.substring(2);
-        const currentNumber = parseInt(numberPart, 10);
-        
-        if (!isNaN(currentNumber)) {
-          nextNumber = currentNumber + 1;
-        }
+      if (!isNaN(currentNumber)) {
+        nextNumber = currentNumber + 1;
+        console.log(`Found latest booking ID: ${latestId}, next number will be: PT${nextNumber}`);
       }
+    } else {
+      console.log("No valid PT bookings found, starting with PT100");
     }
     
     return `PT${nextNumber}`;
   } catch (error) {
     console.error("Error generating booking ID:", error);
-    // Fallback to a static ID if there's an error
     return `PT100`; // Default to PT100 in case of error
   }
 };
@@ -63,15 +96,52 @@ export const generateBookingId = async (): Promise<string> => {
 // Function to create a new booking
 export const createBooking = async (bookingData: Partial<Booking>): Promise<string> => {
   try {
-    // Use imported db instance instead of calling getFirestore()
     const bookingId = await generateBookingId();
+    let invoiceNo = bookingData.invoiceNo;
     
+    // If no invoice number is provided, generate one
+    if (!invoiceNo) {
+      invoiceNo = await generateInvoiceNumber();
+    }
+    
+    // Create a complete booking object with all required fields
     const newBooking: Booking = {
-      id: bookingId,
-      ...bookingData,
+      id: bookingId, // This is important - the ID field in the document should match the document ID
+      bookingType: bookingData.bookingType || BookingType.PAID,
+      bookingDate: bookingData.bookingDate || new Date().toISOString().split("T")[0],
+      deliveryDestination: bookingData.deliveryDestination || "",
+      
+      // Consignor details
+      consignorName: bookingData.consignorName || "",
+      consignorMobile: bookingData.consignorMobile || "",
+      consignorAddress: bookingData.consignorAddress || "",
+      
+      // Consignee details
+      consigneeName: bookingData.consigneeName || "",
+      consigneeMobile: bookingData.consigneeMobile || "",
+      consigneeAddress: bookingData.consigneeAddress || "",
+      
+      articles: bookingData.articles || [],
+      totalArticles: bookingData.totalArticles || 0,
+      
+      formType: bookingData.formType || "Eway Bill",
+      invoiceNo: invoiceNo,
+      declaredValue: bookingData.declaredValue || 0,
+      saidToContain: bookingData.saidToContain || "",
+      remarks: bookingData.remarks || "",
+      
+      fixAmount: bookingData.fixAmount || 0,
+      articleAmount: bookingData.articleAmount || 0,
+      totalAmount: bookingData.totalAmount || 0,
+      
+      status: bookingData.status || "Booked",
+      
+      bookedBy: bookingData.bookedBy || "ADMIN",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
-    // Save to Firestore
+    // Save to Firestore with the custom ID as the document ID
     const bookingRef = doc(db, "bookings", bookingId);
     await setDoc(bookingRef, newBooking);
     
@@ -229,5 +299,39 @@ export const saveDestinationAddress = async (
   } catch (error) {
     console.error("Error saving destination address:", error);
     return false;
+  }
+};
+
+// Helper function to generate invoice numbers starting with 100
+export const generateInvoiceNumber = async (): Promise<string> => {
+  try {
+    const bookingsRef = collection(db, "bookings");
+    // Query bookings with non-empty invoiceNo, ordered by invoiceNo in descending order
+    const q = query(
+      bookingsRef, 
+      orderBy("invoiceNo", "desc"), 
+      limit(1)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    let nextNumber = 100; // Start with 100 if no invoices exist
+    
+    if (!querySnapshot.empty) {
+      const latestBooking = querySnapshot.docs[0].data();
+      if (latestBooking.invoiceNo) {
+        // Parse the invoice number, assuming it's a string containing a number
+        const currentNumber = parseInt(latestBooking.invoiceNo, 10);
+        
+        if (!isNaN(currentNumber)) {
+          nextNumber = currentNumber + 1;
+        }
+      }
+    }
+    
+    return nextNumber.toString();
+  } catch (error) {
+    console.error("Error generating invoice number:", error);
+    // Fallback to a static number if there's an error
+    return "100"; // Default to 100 in case of error
   }
 };
