@@ -132,8 +132,8 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.text("KULUPWADI, BORIVALI EAST.", rightColumnX + 25, currentY)
         
         currentY += 5
-        doc.text(`Ph.No : 98926 16165, --`, leftColumnX + 25, currentY)
-        doc.text(`Ph.No : 98926 16165, --`, rightColumnX + 25, currentY)
+        doc.text(`Ph.No : 98926 16165`, leftColumnX + 25, currentY)
+        doc.text(`Ph.No : 98926 16165`, rightColumnX + 25, currentY)
         
         // Add copy type headers - increased spacing
         currentY += 8
@@ -148,8 +148,8 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         currentY += 8
         doc.setFontSize(8)
         doc.setFont(undefined, 'normal')
-        doc.text(`For Booking Queries Contact : 98926 16165/--`, leftColumnX, currentY)
-        doc.text(`For Booking Queries Contact : 98926 16165/--`, rightColumnX, currentY)
+        doc.text(`For Booking Queries Contact : 98926 16165`, leftColumnX, currentY)
+        doc.text(`For Booking Queries Contact : 98926 16165`, rightColumnX, currentY)
         
         // Add LR Number and booking details - increased spacing between lines
         currentY += 5
@@ -162,9 +162,9 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         
         currentY += 5
         doc.text(`Lr Type : ${booking.bookingType}`, leftColumnX, currentY)
-        doc.text(`Invoice No.: ${booking.invoiceNo || ''}`, leftColumnX + 40, currentY)
+        
         doc.text(`Lr Type : ${booking.bookingType}`, rightColumnX, currentY)
-        doc.text(`Invoice No.: ${booking.invoiceNo || ''}`, rightColumnX + 40, currentY)
+        
         
         // Add From and To details with text wrapping
         currentY += 5
@@ -226,10 +226,10 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         
         // Add booking and printing details
         currentY += 5
-        doc.text(`Booking By : ${booking.bookedBy || 'ADMIN'}`, leftColumnX, currentY)
-        doc.text(`Printed By : ${booking.bookedBy || 'ADMIN'}`, leftColumnX + 40, currentY)
-        doc.text(`Booking By : ${booking.bookedBy || 'ADMIN'}`, rightColumnX, currentY)
-        doc.text(`Printed By : ${booking.bookedBy || 'ADMIN'}`, rightColumnX + 40, currentY)
+        doc.text(`Booking By : PADMA`, leftColumnX, currentY)
+        
+        doc.text(`Booking By : PADMA`, rightColumnX, currentY)
+        
         
         // Add print time
         currentY += 5
@@ -313,7 +313,7 @@ export const uploadInvoicePDF = async (booking: Booking, pdfBlob: Blob, options?
 export const downloadInvoicePDF = async (booking: Booking, filename?: string, options?: { skipUpload?: boolean }): Promise<void> => {
   try {
     // Use the booking ID (LR number) for the filename if not specified
-    const defaultFilename = `${booking.id}_invoice.pdf`;
+    const defaultFilename = `${booking.id}.pdf`;
     
     // Check if the booking already has a PDF URL
     if ((booking.pdfUrl || booking.invoiceUrl) && !options?.skipUpload) {

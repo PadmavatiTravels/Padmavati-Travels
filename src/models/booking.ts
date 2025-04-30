@@ -1,10 +1,11 @@
 export interface Article {
   id: string
   articleName: string
-  actualWeight: number
   artType: string
-  weightRate: number
-  weightAmount: number // calculated
+  quantity: number
+  rate: number
+  saidToContain?: string
+  articleAmount: number // calculated
 }
 
 export enum BookingType {

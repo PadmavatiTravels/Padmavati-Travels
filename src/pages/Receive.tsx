@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getBookingsByType, updateBookingStatus, getBookingById } from "@/services/bookingService"
+import { updateBookingStatus, getBookingById, getRecentBookings } from "@/services/bookingService"
 import { BookingType, type Booking } from "@/models/booking"
 import { useToast } from "@/hooks/use-toast"
 import { Search, Package, Eye, FileDown } from "lucide-react"
@@ -39,17 +39,16 @@ const Receive = () => {
   const loadBookings = async () => {
     setIsLoading(true)
     try {
-      // Get both PAID and TO_PAY bookings
-      const paidBookings = await getBookingsByType(BookingType.PAID)
-      const toPayBookings = await getBookingsByType(BookingType.TO_PAY)
+      // Get recent bookings (last 100)
+      const allBookings = await getRecentBookings(100)
 
-      // Combine and filter to only show "Dispatched" or "In Transit" status
-      const allBookings = [...paidBookings, ...toPayBookings].filter(
+      // Filter to only show "Dispatched" or "In Transit" status
+      const dispatchedBookings = allBookings.filter(
         (booking) => booking.status === "Dispatched" || booking.status === "In Transit",
       )
 
-      setBookings(allBookings)
-      setFilteredBookings(allBookings)
+      setBookings(dispatchedBookings)
+      setFilteredBookings(dispatchedBookings)
     } catch (error) {
       console.error("Error loading bookings:", error)
       toast({
@@ -131,9 +130,7 @@ const Receive = () => {
       await updateBookingStatus(bookingId, status, dateField)
 
       // Update local state
-      const updatedBookings = bookings.map((booking) =>
-        booking.id === bookingId ? { ...booking, status } : booking,
-      )
+      const updatedBookings = bookings.map((booking) => (booking.id === bookingId ? { ...booking, status } : booking))
       setBookings(updatedBookings)
       setFilteredBookings(updatedBookings)
 
@@ -405,9 +402,7 @@ const Receive = () => {
                                 variant="default"
                                 size="sm"
                                 className="bg-brand-primary hover:bg-brand-primary/90"
-                                onClick={() =>
-                                  handleUpdateStatus(booking.id, selectedStatuses[booking.id] || "")
-                                }
+                                onClick={() => handleUpdateStatus(booking.id, selectedStatuses[booking.id] || "")}
                                 disabled={
                                   processing[booking.id] ||
                                   !selectedStatuses[booking.id] ||
@@ -415,11 +410,7 @@ const Receive = () => {
                                   booking.status === "Delivered"
                                 }
                               >
-                                {processing[booking.id] ? (
-                                  "Processing..."
-                                ) : (
-                                  "Update"
-                                )}
+                                {processing[booking.id] ? "Processing..." : "Update"}
                               </Button>
                               <Button
                                 variant="ghost"
@@ -611,13 +602,11 @@ const Receive = () => {
                       !selectedStatuses[selectedBooking?.id || ""]
                     }
                   >
-                    {processing[selectedBooking?.id || ""] ? (
-                      "Processing..."
-                    ) : selectedBooking?.status === "Received" || selectedBooking?.status === "Delivered" ? (
-                      "Already Processed"
-                    ) : (
-                      "Update Status"
-                    )}
+                    {processing[selectedBooking?.id || ""]
+                      ? "Processing..."
+                      : selectedBooking?.status === "Received" || selectedBooking?.status === "Delivered"
+                        ? "Already Processed"
+                        : "Update Status"}
                   </Button>
                 </div>
               </CardContent>

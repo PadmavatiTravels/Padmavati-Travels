@@ -1,4 +1,6 @@
-'use client'
+"use client"
+
+import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
@@ -6,26 +8,18 @@ import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Card, CardContent } from "./ui/card"
-import { Plus, Trash2, X } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
 import type { Article, BookingType } from "../models/booking"
-import { 
+import {
   createBooking,
-calculateWeightAmount,
-calculateTotalArticleAmount,
-addDropdownOption,
-getPreviousValues,
-savePreviousValues,
-getBookingById
+  calculateTotalArticleAmount,
+  getPreviousValues,
+  savePreviousValues,
+  getBookingById,
 } from "../services/bookingService"
-import {
-  saveConsigneeDetails,
-  getConsigneeByDestination
-} from "../services/consigneeService"
-import {
-  saveDestinationAddress,
-  fetchDestinationAddress
-} from "../services/destinationService"
+import { saveConsigneeDetails, getConsigneeByDestination } from "../services/consigneeService"
+import { saveDestinationAddress, fetchDestinationAddress } from "../services/destinationService"
 import { useToast } from "../hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 import { Textarea } from "./ui/textarea"
@@ -35,21 +29,31 @@ import { useAppDispatch } from "../hooks/useAppDispatch"
 import { fetchDropdownOptions, addDestinationAsync, addArticleTypeAsync } from "../store/bookingSlice"
 import { CustomSelect } from "./ui/custom-select"
 import { useAuth } from "../contexts/AuthContext"
+import { getAuth } from "firebase/auth"
 
 // Define field history type for storing previous entries
 type FieldHistory = {
-  [fieldName: string]: string[];
+  [fieldName: string]: string[]
 }
 
-const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: string) => void }> = ({ formType, onBookingCreated }) => {
+const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: string) => void }> = ({
+  formType,
+  onBookingCreated,
+}) => {
   const navigate = useNavigate()
   const { toast } = useToast()
   const dispatch = useAppDispatch()
   const { currentUser } = useAuth()
-  
+
+  // Fallback to direct Firebase auth if context fails
+  const firebaseAuth = getAuth()
+  const firebaseUser = firebaseAuth.currentUser
+
+  const effectiveUser = currentUser || firebaseUser
+
   // Check if user is authenticated
   useEffect(() => {
-    if (!currentUser) {
+    if (!effectiveUser) {
       toast({
         title: "Authentication Error",
         description: "You must be logged in to access this page",
@@ -57,41 +61,38 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       })
       navigate("/login")
     }
-  }, [currentUser, navigate, toast])
-  
+  }, [effectiveUser, navigate, toast])
+
   // Default locations and article types to ensure they're always available
   const defaultDestinations = ["Hyderabad", "Latur", "Nagpur", "Hingoli"]
   const defaultArticleTypes = ["BOX", "AUTO PARTS"]
-  
+
   // Dispatch fetchDropdownOptions on mount to load destinations and articleTypes
   useEffect(() => {
     dispatch(fetchDropdownOptions())
   }, [dispatch])
-  
-  const userId = currentUser?.uid || useAppSelector(state => state.auth.currentUser?.uid)
-  const userEmail = currentUser?.email || ""
-  const destinations = useAppSelector(state => state.booking.destinations)
-  const articleTypes = useAppSelector(state => state.booking.articleTypes)
-  
+
+  // Fix: Use effectiveUser instead of trying to access Redux state
+  const userId = effectiveUser?.uid || ""
+  const userEmail = effectiveUser?.email || ""
+
+  // Get destinations and article types from Redux
+  const destinations = useAppSelector((state) => state.booking.destinations || [])
+  const articleTypes = useAppSelector((state) => state.booking.articleTypes || [])
+
   // Combine default destinations with those from Redux
-  const allDestinations = [...new Set([
-    ...(destinations?.filter(Boolean).map(String) || []),
-    ...defaultDestinations
-  ])]
-  
+  const allDestinations = [...new Set([...(destinations?.filter(Boolean).map(String) || []), ...defaultDestinations])]
+
   // Combine default article types with those from Redux
-  const allArticleTypes = [...new Set([
-    ...(articleTypes || []),
-    ...defaultArticleTypes
-  ])]
-  
+  const allArticleTypes = [...new Set([...(articleTypes || []), ...defaultArticleTypes])]
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isTypingDestination, setIsTypingDestination] = useState(false)
   const [isTypingArticleType, setIsTypingArticleType] = useState(false)
   const customDestinationRef = useRef<HTMLInputElement>(null)
   const customArticleTypeRef = useRef<HTMLInputElement>(null)
-  const [bookingId, setBookingId] = useState("1B/12535")
-  
+  const [bookingId, setBookingId] = useState("PT100")
+
   // State for field history and suggestions
   const [fieldHistory, setFieldHistory] = useState<FieldHistory>({})
   const [activeSuggestionField, setActiveSuggestionField] = useState<string | null>(null)
@@ -106,34 +107,30 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     consigneeName: "",
     consigneeMobile: "",
     consigneeAddress: "",
-   
+
     formType: "E-Waybill",
-    invoiceNo: "",
-    declaredValue: 0,
     saidToContain: "",
     remarks: "",
-    fixAmount: 0,
     godown: "",
-    status: "Booked"
+    status: "Booked",
   })
 
   // Autofill related address when deliveryDestination changes
   useEffect(() => {
     const autofillAddress = async () => {
       if (formData.deliveryDestination) {
-        const addressData = await fetchDestinationAddress(formData.deliveryDestination);
+        const addressData = await fetchDestinationAddress(formData.deliveryDestination)
         if (addressData) {
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
             consignorAddress: addressData.consignorAddress || prev.consignorAddress,
             consigneeAddress: addressData.consigneeAddress || prev.consigneeAddress,
-          }));
+          }))
         }
       }
-    };
-    autofillAddress();
-  }, [formData.deliveryDestination]);
-
+    }
+    autofillAddress()
+  }, [formData.deliveryDestination])
 
   const [charges, setCharges] = useState({
     freight: 0,
@@ -141,21 +138,18 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     dropCartage: 0,
     loading: 0,
     lrCharge: 0,
-    grandTotal: 0
+    grandTotal: 0,
   })
 
   const [articles, setArticles] = useState<Article[]>([
     {
       id: uuidv4(),
       articleName: "",
-      actualWeight: 0,
-      chargedWeight: 0,
       artType: allArticleTypes.length > 0 ? allArticleTypes[0] : "Box",
-      weightRate: 0,
-      weightAmount: 0,
       quantity: 1,
+      rate: 0,
       saidToContain: "",
-      articleAmount: 0
+      articleAmount: 0,
     },
   ])
 
@@ -163,43 +157,41 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
   useEffect(() => {
     const loadFieldHistory = async () => {
       try {
-        const history = await getPreviousValues();
-        console.log("Field history structure:", history);
-        setFieldHistory(history);
+        const history = await getPreviousValues()
+        console.log("Field history structure:", history)
+        setFieldHistory(history)
       } catch (error) {
-        console.error("Error loading field history:", error);
+        console.error("Error loading field history:", error)
       }
-    };
-    
-    loadFieldHistory();
-  }, []);
+    }
+
+    loadFieldHistory()
+  }, [])
 
   // Update suggestions when a field is being typed in
   useEffect(() => {
     if (activeSuggestionField && searchTerm) {
-      const fieldValues = fieldHistory[activeSuggestionField] || [];
+      const fieldValues = fieldHistory[activeSuggestionField] || []
       // Ensure fieldValues is an array before calling filter
-      const values = Array.isArray(fieldValues) ? fieldValues : [];
-      const matches = values.filter(value => 
-        value.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredSuggestions(matches);
+      const values = Array.isArray(fieldValues) ? fieldValues : []
+      const matches = values.filter((value) => value.toLowerCase().includes(searchTerm.toLowerCase()))
+      setFilteredSuggestions(matches)
     } else {
-      setFilteredSuggestions([]);
+      setFilteredSuggestions([])
     }
-  }, [activeSuggestionField, searchTerm, fieldHistory]);
+  }, [activeSuggestionField, searchTerm, fieldHistory])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
 
     setFormData((prev) => ({
       ...prev,
-      [name]: name.includes("Amount") || name === "declaredValue" ? Number.parseFloat(value) || 0 : value,
+      [name]: name.includes("Amount") ? Number.parseFloat(value) || 0 : value,
     }))
 
     // Set active suggestion field and search term
-    setActiveSuggestionField(name);
-    setSearchTerm(value);
+    setActiveSuggestionField(name)
+    setSearchTerm(value)
   }
 
   const handleChargesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,23 +199,27 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     const numValue = Number.parseFloat(value) || 0
 
     // Update active suggestion for charges fields too
-    setActiveSuggestionField(name);
-    setSearchTerm(value);
+    setActiveSuggestionField(name)
+    setSearchTerm(value)
 
-    setCharges(prev => {
+    setCharges((prev) => {
       const newCharges = {
         ...prev,
-        [name]: numValue
+        [name]: numValue,
       }
 
-      
       // Calculate total amount including article amount
-      const baseAmount = newCharges.freight + newCharges.pickup + newCharges.dropCartage + 
-                         newCharges.loading + newCharges.lrCharge + articleAmount
-      
-      // Calculate grand total including fixed amount
-      newCharges.grandTotal = baseAmount + formData.fixAmount
-      
+      const baseAmount =
+        newCharges.freight +
+        newCharges.pickup +
+        newCharges.dropCartage +
+        newCharges.loading +
+        newCharges.lrCharge +
+        articleAmount
+
+      // Calculate grand total
+      newCharges.grandTotal = baseAmount
+
       return newCharges
     })
   }
@@ -251,37 +247,37 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     }))
 
     // Save the selected value to field history
-    saveToFieldHistory(name, value);
-    
+    saveToFieldHistory(name, value)
+
     // If destination is selected, fetch consignee details
     if (name === "deliveryDestination" && value && value !== "add-new") {
-      fetchConsigneeDetails(value);
+      fetchConsigneeDetails(value)
     }
   }
 
   // Add this new function to fetch and populate consignee details
   const fetchConsigneeDetails = async (destination: string) => {
     try {
-      const consigneeDetails = await getConsigneeByDestination(destination);
+      const consigneeDetails = await getConsigneeByDestination(destination)
       if (consigneeDetails) {
         // Update form with consignee details
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
           consigneeName: consigneeDetails.name || prev.consigneeName,
           consigneeMobile: consigneeDetails.mobile || prev.consigneeMobile,
-          consigneeAddress: consigneeDetails.address || prev.consigneeAddress
-        }));
-        
+          consigneeAddress: consigneeDetails.address || prev.consigneeAddress,
+        }))
+
         toast({
           title: "Consignee Details Loaded",
           description: `Loaded details for ${consigneeDetails.name}`,
           variant: "default",
-        });
+        })
       }
     } catch (error) {
-      console.error("Error fetching consignee details:", error);
+      console.error("Error fetching consignee details:", error)
     }
-  };
+  }
 
   const handleCustomDestinationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData((prev) => ({
@@ -290,36 +286,36 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     }))
 
     // Update search for custom destinations
-    setActiveSuggestionField("deliveryDestination");
-    setSearchTerm(e.target.value);
+    setActiveSuggestionField("deliveryDestination")
+    setSearchTerm(e.target.value)
   }
 
   const selectSuggestion = (field: string, value: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [field]: value,
     }))
-    setFilteredSuggestions([]);
-    setActiveSuggestionField(null);
+    setFilteredSuggestions([])
+    setActiveSuggestionField(null)
   }
 
   const saveToFieldHistory = (fieldName: string, value: string) => {
-    if (!value.trim()) return;
-    
-    setFieldHistory(prev => {
+    if (!value.trim()) return
+
+    setFieldHistory((prev) => {
       // Check if this value is already in the history
-      const existingValues = prev[fieldName] || [];
+      const existingValues = prev[fieldName] || []
       if (!existingValues.includes(value)) {
         const newHistory = {
           ...prev,
-          [fieldName]: [...existingValues, value]
-        };
+          [fieldName]: [...existingValues, value],
+        }
         // Save to Firebase
-        savePreviousValues(newHistory);
-        return newHistory;
+        savePreviousValues(newHistory)
+        return newHistory
       }
-      return prev;
-    });
+      return prev
+    })
   }
 
   const cancelCustomDestination = () => {
@@ -334,19 +330,15 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     const { name, value } = e.target
     const updatedArticles = [...articles]
 
-    if (name === "actualWeight" || name === "chargedWeight" || name === "weightRate" || name === "quantity") {
+    if (name === "rate" || name === "quantity") {
       updatedArticles[index] = {
         ...updatedArticles[index],
         [name]: Number.parseFloat(value) || 0,
       }
 
-      // Always recalculate weight amount when any of these fields change
+      // Calculate article amount based on rate and quantity
       const article = updatedArticles[index]
-      const weightToUse = article.chargedWeight > 0 ? article.chargedWeight : article.actualWeight
-      updatedArticles[index].weightAmount = weightToUse * article.weightRate
-      
-      // Always recalculate article amount
-      updatedArticles[index].articleAmount = (article.quantity || 1) * (updatedArticles[index].weightAmount || 0)
+      updatedArticles[index].articleAmount = (article.quantity || 1) * (article.rate || 0)
     } else if (name === "articleAmount") {
       // Directly use the article amount entered by the user
       updatedArticles[index] = {
@@ -360,20 +352,19 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       }
 
       // Save value to field history
-      saveToFieldHistory(`article_${name}`, value);
+      saveToFieldHistory(`article_${name}`, value)
     }
 
     setArticles(updatedArticles)
-    
+
     // Recalculate total charges whenever articles change
     const articleAmount = calculateTotalArticleAmount(updatedArticles)
-    setCharges(prev => {
-      const baseAmount = prev.freight + prev.pickup + prev.dropCartage + 
-                       prev.loading + prev.lrCharge + articleAmount
-      
+    setCharges((prev) => {
+      const baseAmount = prev.freight + prev.pickup + prev.dropCartage + prev.loading + prev.lrCharge + articleAmount
+
       return {
         ...prev,
-        grandTotal: baseAmount + formData.fixAmount
+        grandTotal: baseAmount,
       }
     })
   }
@@ -385,31 +376,23 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       artType: value,
     }
     setArticles(updatedArticles)
-    
+
     // Save selected article type to history
-    saveToFieldHistory("articleType", value);
+    saveToFieldHistory("articleType", value)
   }
 
   const addArticle = () => {
     const newArticle = {
       id: uuidv4(),
       articleName: "",
-      actualWeight: 0,
-      chargedWeight: 0,
       artType: allArticleTypes.length > 0 ? allArticleTypes[0] : "Box",
-      weightRate: 0,
-      weightAmount: 0,
       quantity: 1,
+      rate: 0,
       saidToContain: "",
-      articleAmount: 0
-    };
-    
-    // Initialize weight amount calculation
-    const weightToUse = newArticle.chargedWeight > 0 ? newArticle.chargedWeight : newArticle.actualWeight;
-    newArticle.weightAmount = weightToUse * newArticle.weightRate;
-    newArticle.articleAmount = (newArticle.quantity || 1) * (newArticle.weightAmount || 0);
-    
-    setArticles([...articles, newArticle]);
+      articleAmount: 0,
+    }
+
+    setArticles([...articles, newArticle])
   }
 
   const removeArticle = (index: number) => {
@@ -429,26 +412,26 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
 
   const calculateTotals = () => {
     const articleAmount = calculateTotalArticleAmount(articles)
-    const totalAmount = formData.fixAmount + articleAmount
+    const totalAmount = articleAmount
 
     return {
       articleAmount,
       totalAmount,
     }
   }
-  
+
   // Calculate the total amount from all articles
   const calculateTotalArticleAmount = (articles: Article[]): number => {
     return articles.reduce((total, article) => {
       // If articleAmount is directly provided, use it
       if (article.articleAmount && article.articleAmount > 0) {
-        return total + article.articleAmount;
+        return total + article.articleAmount
       }
-      
-      // Otherwise calculate from quantity and weight amount
-      const articleAmount = (article.quantity || 1) * (article.weightAmount || 0);
-      return total + articleAmount;
-    }, 0);
+
+      // Otherwise calculate from quantity and rate
+      const articleAmount = (article.quantity || 1) * (article.rate || 0)
+      return total + articleAmount
+    }, 0)
   }
 
   const { articleAmount, totalAmount } = calculateTotals()
@@ -471,9 +454,9 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
       await saveDestinationAddress(formData.deliveryDestination, {
         consignorAddress: formData.consignorAddress,
         consigneeAddress: formData.consigneeAddress,
-      });
+      })
     }
-    
+
     // Save consignee details for future autofill
     if (formData.deliveryDestination && formData.consigneeName && formData.consigneeMobile) {
       try {
@@ -481,10 +464,9 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
           name: formData.consigneeName,
           mobile: formData.consigneeMobile,
           address: formData.consigneeAddress || "",
-          
-        });
+        })
       } catch (saveError) {
-        console.error("Error saving consignee details:", saveError);
+        console.error("Error saving consignee details:", saveError)
       }
     }
 
@@ -507,11 +489,11 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     }
 
     // Validate articles
-    const invalidArticles = articles.filter((a) => !a.articleName || a.actualWeight <= 0 || a.weightRate <= 0)
+    const invalidArticles = articles.filter((a) => !a.articleName || a.rate <= 0)
     if (invalidArticles.length > 0) {
       toast({
         title: "Validation Error",
-        description: "All articles must have a name, weight, and rate",
+        description: "All articles must have a name and rate",
         variant: "destructive",
       })
       return
@@ -547,22 +529,20 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         consignorName: formData.consignorName,
         consignorMobile: formData.consignorMobile,
         consignorAddress: formData.consignorAddress,
-       
         consigneeName: formData.consigneeName,
         consigneeMobile: formData.consigneeMobile,
         consigneeAddress: formData.consigneeAddress,
-        invoiceNo: formData.invoiceNo,
         remarks: formData.remarks,
-        godown: formData.godown
-      };
+        godown: formData.godown,
+      }
 
       // Save all values to field history in Firebase
-      await savePreviousValues(formDataToSave);
+      await savePreviousValues(formDataToSave)
 
       // Save article values too
       for (const article of articles) {
-        if (article.articleName) saveToFieldHistory("articleName", article.articleName);
-        if (article.saidToContain) saveToFieldHistory("saidToContain", article.saidToContain);
+        if (article.articleName) saveToFieldHistory("articleName", article.articleName)
+        if (article.saidToContain) saveToFieldHistory("saidToContain", article.saidToContain)
       }
 
       const bookingData = {
@@ -575,7 +555,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         totalArticles: articles.length,
         charges,
         status: formData.status,
-        bookedBy: currentUser?.email || "ADMIN",
+        bookedBy: effectiveUser?.email || "ADMIN",
       }
 
       toast({
@@ -655,12 +635,12 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
 
   // Render the suggestions dropdown
   const renderSuggestions = () => {
-    if (!activeSuggestionField || filteredSuggestions.length === 0) return null;
-    
+    if (!activeSuggestionField || filteredSuggestions.length === 0) return null
+
     return (
       <div className="absolute z-10 w-full mt-1 bg-white border rounded shadow-lg max-h-40 overflow-y-auto">
         {filteredSuggestions.map((suggestion, index) => (
-          <div 
+          <div
             key={index}
             className="p-2 hover:bg-gray-100 cursor-pointer"
             onClick={() => selectSuggestion(activeSuggestionField, suggestion)}
@@ -669,16 +649,14 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
           </div>
         ))}
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
-          <Select   
-            onValueChange={(value) => handleSelectChange("bookingType", value)}
-          >
+          <Select onValueChange={(value) => handleSelectChange("bookingType", value)}>
             <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
@@ -711,16 +689,21 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                 />
               </div>
               <div className="space-y-2 relative">
-                <Label htmlFor="ewaybillNumber">E-Waybill Number</Label>
-                <Input
-                  id="ewaybillNumber"
-                  name="invoiceNo"
-                  value={formData.formType === "E-Waybill" ? formData.invoiceNo : ""}
-                  onChange={handleInputChange}
-                  placeholder="Enter e-waybill number"
-                  autoComplete="off"
-                />
-                {activeSuggestionField === "invoiceNo" && renderSuggestions()}
+                <Label htmlFor="status">Status</Label>
+                <Select value={formData.status} onValueChange={(value) => handleSelectChange("status", value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Booked">Booked</SelectItem>
+                    <SelectItem value="Dispatched">Dispatched</SelectItem>
+                    <SelectItem value="In Transit">In Transit</SelectItem>
+                    <SelectItem value="Received">Received</SelectItem>
+                    <SelectItem value="Delivered">Delivered</SelectItem>
+                    <SelectItem value="Not Received">Not Received</SelectItem>
+                    <SelectItem value="Not Dispatched">Not Dispatched</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -831,21 +814,22 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                 <div className="font-medium">Article Details</div>
                 <div>Total Art: {articles.length}</div>
               </div>
-              
+
               <div className="grid grid-cols-12 gap-2 mb-2">
-                <div className="col-span-2">Article</div>
+                <div className="col-span-3">Article</div>
                 <div className="col-span-1">Art</div>
                 <div className="col-span-2">Art Type</div>
                 <div className="col-span-2">Said To Cont</div>
+                <div className="col-span-1">Art Rate</div>
                 <div className="col-span-1">Art Amt</div>
-                <div className="col-span-3"></div>
+                <div className="col-span-2"></div>
               </div>
-              
+
               <div className="space-y-2">
                 {articles.map((article, index) => (
                   <div key={article.id} className="border p-3 rounded mb-3">
                     <div className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-2 relative">
+                      <div className="col-span-3 relative">
                         <Input
                           name="articleName"
                           value={article.articleName}
@@ -853,8 +837,8 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                           placeholder="Article name"
                           autoComplete="off"
                           onFocus={() => {
-                            setActiveSuggestionField(`article_articleName`);
-                            setSearchTerm(article.articleName);
+                            setActiveSuggestionField(`article_articleName`)
+                            setSearchTerm(article.articleName)
                           }}
                         />
                         {activeSuggestionField === `article_articleName` && renderSuggestions()}
@@ -878,7 +862,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                             { value: "Box", label: "Box" },
                             { value: "Bundel", label: "Bundel" },
                             { value: "Cartoon Box", label: "Cartoon Box" },
-                            { value: "Envelope", label: "Envelope" }
+                            { value: "Envelope", label: "Envelope" },
                           ]}
                           value={article.artType}
                           onChange={(value) => handleArticleTypeChange(index, value)}
@@ -894,11 +878,21 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                           onChange={(e) => handleArticleChange(index, e)}
                           autoComplete="off"
                           onFocus={() => {
-                            setActiveSuggestionField(`article_saidToContain`);
-                            setSearchTerm(article.saidToContain || "");
+                            setActiveSuggestionField(`article_saidToContain`)
+                            setSearchTerm(article.saidToContain || "")
                           }}
                         />
                         {activeSuggestionField === `article_saidToContain` && renderSuggestions()}
+                      </div>
+                      <div className="col-span-1">
+                        <Input
+                          name="rate"
+                          type="number"
+                          value={article.rate || 0}
+                          onChange={(e) => handleArticleChange(index, e)}
+                          className="w-full"
+                          min="0"
+                        />
                       </div>
                       <div className="col-span-1">
                         <Input
@@ -910,7 +904,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                           min="0"
                         />
                       </div>
-                      <div className="col-span-3 flex justify-end">
+                      <div className="col-span-2 flex justify-end">
                         <Button
                           type="button"
                           onClick={() => removeArticle(index)}
@@ -930,80 +924,8 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                         </Button>
                       </div>
                     </div>
-                    
-                    <div className="grid grid-cols-4 gap-2 mt-2">
-                      <div className="space-y-1">
-                        <Label htmlFor={`actualWeight-${index}`}>Actual Wt</Label>
-                        <Input
-                          id={`actualWeight-${index}`}
-                          name="actualWeight"
-                          type="number"
-                          value={article.actualWeight || ""}
-                          onChange={(e) => handleArticleChange(index, e)}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <Label htmlFor={`chargedWeight-${index}`}>Charged Wt</Label>
-                        <Input
-                          id={`chargedWeight-${index}`}
-                          name="chargedWeight"
-                          type="number"
-                          value={article.chargedWeight || ""}
-                          onChange={(e) => handleArticleChange(index, e)}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <Label htmlFor={`weightRate-${index}`}>Wt Rate</Label>
-                        <Input
-                          id={`weightRate-${index}`}
-                          name="weightRate"
-                          type="number"
-                          value={article.weightRate || ""}
-                          onChange={(e) => handleArticleChange(index, e)}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <Label htmlFor={`weightAmount-${index}`}>Wt Amt</Label>
-                        <Input
-                          id={`weightAmount-${index}`}
-                          name="weightAmount"
-                          type="number"
-                          value={article.weightAmount || ""}
-                          readOnly
-                          className="bg-gray-50"
-                        />
-                      </div>
-                    </div>
                   </div>
                 ))}
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="declaredValue">Declared Value</Label>
-                <Input
-                  id="declaredValue"
-                  name="declaredValue"
-                  type="number"
-                  value={formData.declaredValue || 0}
-                  onChange={handleInputChange}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="fixAmount">Fixed Amount</Label>
-                <Input
-                  id="fixAmount"
-                  name="fixAmount"
-                  type="number"
-                  value={formData.fixAmount || 0}
-                  onChange={handleInputChange}
-                />
               </div>
             </div>
 
@@ -1020,30 +942,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                 />
                 {activeSuggestionField === "godown" && renderSuggestions()}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => handleSelectChange("status", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Booked">Booked</SelectItem>
-                    <SelectItem value="Dispatched">Dispatched</SelectItem>
-                    <SelectItem value="In Transit">In Transit</SelectItem>
-                    <SelectItem value="Received">Received</SelectItem>
-                    <SelectItem value="Delivered">Delivered</SelectItem>
-                    <SelectItem value="Not Received">Not Received</SelectItem>
-                    <SelectItem value="Not Dispatched">Not Dispatched</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Remarks */}
-            <div className="grid grid-cols-2 gap-4 mt-4">
               <div className="space-y-2 relative">
                 <Label htmlFor="remarks">Remarks</Label>
                 <Textarea
@@ -1059,13 +957,13 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
               </div>
             </div>
           </div>
-          
+
           {/* Right Side - Charges Card */}
           <div className="col-span-1">
             <Card className="h-full">
               <CardContent className="pt-4">
                 <div className="text-lg font-semibold mb-4">Charges</div>
-                
+
                 <div className="space-y-3">
                   <div className="space-y-2 relative">
                     <Label htmlFor="freight">Freight</Label>
@@ -1080,7 +978,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                     />
                     {activeSuggestionField === "freight" && renderSuggestions()}
                   </div>
-                  
+
                   <div className="space-y-2 relative">
                     <Label htmlFor="pickup">Pickup</Label>
                     <Input
@@ -1094,7 +992,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                     />
                     {activeSuggestionField === "pickup" && renderSuggestions()}
                   </div>
-                  
+
                   <div className="space-y-2 relative">
                     <Label htmlFor="dropCartage">Drop Cartage</Label>
                     <Input
@@ -1108,7 +1006,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                     />
                     {activeSuggestionField === "dropCartage" && renderSuggestions()}
                   </div>
-                  
+
                   <div className="space-y-2 relative">
                     <Label htmlFor="loading">Loading/Unloading</Label>
                     <Input
@@ -1122,7 +1020,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                     />
                     {activeSuggestionField === "loading" && renderSuggestions()}
                   </div>
-                  
+
                   <div className="space-y-2 relative">
                     <Label htmlFor="lrCharge">LR Charge</Label>
                     <Input
@@ -1136,7 +1034,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                     />
                     {activeSuggestionField === "lrCharge" && renderSuggestions()}
                   </div>
-                  
+
                   <div className="border-t pt-2">
                     <div className="flex justify-between py-1 font-bold">
                       <span>Grand Total:</span>
@@ -1150,24 +1048,16 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         </div>
 
         <div className="flex justify-end space-x-4 mt-4">
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={() => navigate("/")}
-          >
+          <Button type="button" variant="outline" onClick={() => navigate("/")}>
             Cancel
           </Button>
-          <Button 
-            type="submit" 
-            className="bg-blue-600 hover:bg-blue-700"
-            disabled={isSubmitting}
-          >
+          <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
             {isSubmitting ? "Creating..." : "Create Booking"}
           </Button>
         </div>
       </form>
     </div>
-);
+  )
 }
 
-export default BookingForm;
+export default BookingForm

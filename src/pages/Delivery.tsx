@@ -47,6 +47,15 @@ const Delivery = () => {
       }
 
       setBooking(foundBooking as Booking)
+
+      // Check if the booking is in "Received" status
+      if (foundBooking.status !== "Received") {
+        toast({
+          title: "Status Error",
+          description: `Booking ${lrNumber} is not ready for delivery. Current status: ${foundBooking.status}`,
+          variant: "warning",
+        })
+      }
     } catch (error) {
       console.error("Error searching for booking:", error)
       toast({

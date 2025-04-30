@@ -1,110 +1,111 @@
+"use client"
 
-import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { getBookingsByType, updateBookingStatus } from "@/services/bookingService";
-import { BookingType, Booking } from "@/models/booking";
-import { useToast } from "@/hooks/use-toast";
-import { Search, TruckIcon, CheckCircle } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { updateBookingStatus } from "@/services/bookingService"
+import { BookingType, type Booking } from "@/models/booking"
+import { useToast } from "@/hooks/use-toast"
+import { Search, TruckIcon } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAppSelector } from "@/hooks/useAppSelector"
+import { useIsMobile } from "@/hooks/use-mobile"
+import { getRecentBookings } from "@/services/bookingService"
 
 const Dispatch = () => {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
-  const [selectedDestination, setSelectedDestination] = useState<string>("all");
-  const [search, setSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [processing, setProcessing] = useState<Record<string, boolean>>({});
-  const { toast } = useToast();
-  const destinations = useAppSelector(state => state.booking.destinations);
-  const isMobile = useIsMobile();
+  const [bookings, setBookings] = useState<Booking[]>([])
+  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([])
+  const [selectedDestination, setSelectedDestination] = useState<string>("all")
+  const [search, setSearch] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [processing, setProcessing] = useState<Record<string, boolean>>({})
+  const { toast } = useToast()
+  const destinations = useAppSelector((state) => state.booking.destinations)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
-    loadBookings();
-  }, []);
+    loadBookings()
+  }, [])
 
   const loadBookings = async () => {
-    setIsLoading(true);
+    setIsLoading(true)
     try {
-      // Get both PAID and TO_PAY bookings
-      const paidBookings = await getBookingsByType(BookingType.PAID);
-      const toPayBookings = await getBookingsByType(BookingType.TO_PAY);
-      
-      // Combine and filter to only show "Booked" status (not dispatched)
-      const allBookings = [...paidBookings, ...toPayBookings]
-        .filter(booking => booking.status === "Booked");
-      
-      setBookings(allBookings);
-      setFilteredBookings(allBookings);
+      // Get recent bookings (last 100)
+      const allBookings = await getRecentBookings(100)
+
+      // Filter to only show "Booked" status (not dispatched)
+      const bookedBookings = allBookings.filter((booking) => booking.status === "Booked")
+
+      setBookings(bookedBookings)
+      setFilteredBookings(bookedBookings)
     } catch (error) {
-      console.error("Error loading bookings:", error);
+      console.error("Error loading bookings:", error)
       toast({
         title: "Error",
         description: "Failed to load bookings. Please try again.",
         variant: "destructive",
-      });
+      })
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   useEffect(() => {
-    filterBookings();
-  }, [selectedDestination, search, bookings]);
+    filterBookings()
+  }, [selectedDestination, search, bookings])
 
   const filterBookings = () => {
-    let filtered = [...bookings];
-    
+    let filtered = [...bookings]
+
     if (selectedDestination && selectedDestination !== "all") {
-      filtered = filtered.filter(booking => booking.deliveryDestination === selectedDestination);
+      filtered = filtered.filter((booking) => booking.deliveryDestination === selectedDestination)
     }
-    
+
     if (search) {
-      const searchLower = search.toLowerCase();
-      filtered = filtered.filter(booking => 
-        booking.id.toLowerCase().includes(searchLower) ||
-        booking.consigneeName.toLowerCase().includes(searchLower) ||
-        booking.consigneeMobile.toLowerCase().includes(searchLower)
-      );
+      const searchLower = search.toLowerCase()
+      filtered = filtered.filter(
+        (booking) =>
+          booking.id.toLowerCase().includes(searchLower) ||
+          booking.consigneeName.toLowerCase().includes(searchLower) ||
+          booking.consigneeMobile.toLowerCase().includes(searchLower),
+      )
     }
-    
-    setFilteredBookings(filtered);
-  };
+
+    setFilteredBookings(filtered)
+  }
 
   const handleDispatch = async (bookingId: string) => {
-    setProcessing(prev => ({ ...prev, [bookingId]: true }));
-    
+    setProcessing((prev) => ({ ...prev, [bookingId]: true }))
+
     try {
-      await updateBookingStatus(bookingId, "Dispatched", "dispatchDate");
-      
+      await updateBookingStatus(bookingId, "Dispatched", "dispatchDate")
+
       // Update local state
-      const updatedBookings = bookings.filter(booking => booking.id !== bookingId);
-      setBookings(updatedBookings);
-      
+      const updatedBookings = bookings.filter((booking) => booking.id !== bookingId)
+      setBookings(updatedBookings)
+
       toast({
         title: "Success",
         description: `Booking ${bookingId} has been dispatched`,
-      });
+      })
     } catch (error) {
-      console.error("Error dispatching booking:", error);
+      console.error("Error dispatching booking:", error)
       toast({
         title: "Error",
         description: "Failed to dispatch booking. Please try again.",
         variant: "destructive",
-      });
+      })
     } finally {
-      setProcessing(prev => ({ ...prev, [bookingId]: false }));
+      setProcessing((prev) => ({ ...prev, [bookingId]: false }))
     }
-  };
+  }
 
   const resetFilters = () => {
-    setSelectedDestination("all");
-    setSearch("");
-  };
+    setSelectedDestination("all")
+    setSearch("")
+  }
 
   return (
     <div className="space-y-6">
@@ -114,18 +115,13 @@ const Dispatch = () => {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Dispatch Filters</CardTitle>
-          <CardDescription>
-            Filter bookings for dispatch by destination or search terms
-          </CardDescription>
+          <CardDescription>Filter bookings for dispatch by destination or search terms</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className={`grid ${isMobile ? 'grid-cols-1 gap-4' : 'grid-cols-3 gap-4'}`}>
+          <div className={`grid ${isMobile ? "grid-cols-1 gap-4" : "grid-cols-3 gap-4"}`}>
             <div className="space-y-2">
               <Label htmlFor="destination">Destination</Label>
-              <Select
-                value={selectedDestination}
-                onValueChange={setSelectedDestination}
-              >
+              <Select value={selectedDestination} onValueChange={setSelectedDestination}>
                 <SelectTrigger id="destination">
                   <SelectValue placeholder="All Destinations" />
                 </SelectTrigger>
@@ -139,7 +135,7 @@ const Dispatch = () => {
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="search">Search</Label>
               <div className="flex">
@@ -150,22 +146,14 @@ const Dispatch = () => {
                   onChange={(e) => setSearch(e.target.value)}
                   className="rounded-r-none"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-l-none border-l-0"
-                >
+                <Button type="button" variant="outline" className="rounded-l-none border-l-0">
                   <Search size={18} />
                 </Button>
               </div>
             </div>
-            
+
             <div className="flex items-end">
-              <Button 
-                variant="outline" 
-                onClick={resetFilters}
-                className="w-full"
-              >
+              <Button variant="outline" onClick={resetFilters} className="w-full">
                 Reset Filters
               </Button>
             </div>
@@ -179,15 +167,9 @@ const Dispatch = () => {
           <div className="flex justify-between items-center">
             <div>
               <CardTitle>Pending Dispatch</CardTitle>
-              <CardDescription>
-                Bookings ready to be dispatched: {filteredBookings.length}
-              </CardDescription>
+              <CardDescription>Bookings ready to be dispatched: {filteredBookings.length}</CardDescription>
             </div>
-            <Button 
-              onClick={loadBookings} 
-              variant="outline"
-              disabled={isLoading}
-            >
+            <Button onClick={loadBookings} variant="outline" disabled={isLoading}>
               {isLoading ? "Loading..." : "Refresh"}
             </Button>
           </div>
@@ -224,11 +206,13 @@ const Dispatch = () => {
                       <td className="py-3 px-2">{booking.deliveryDestination}</td>
                       <td className="py-3 px-2 hidden md:table-cell">{booking.consigneeName}</td>
                       <td className="py-3 px-2 hidden md:table-cell">
-                        <span className={`px-2 py-1 rounded-full text-xs ${
-                          booking.bookingType === BookingType.PAID ? 
-                          "bg-green-100 text-green-800" : 
-                          "bg-blue-100 text-blue-800"
-                        }`}>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs ${
+                            booking.bookingType === BookingType.PAID
+                              ? "bg-green-100 text-green-800"
+                              : "bg-blue-100 text-blue-800"
+                          }`}
+                        >
                           {booking.bookingType}
                         </span>
                       </td>
@@ -258,7 +242,7 @@ const Dispatch = () => {
         </CardContent>
       </Card>
     </div>
-  );
-};
+  )
+}
 
-export default Dispatch;
+export default Dispatch
