@@ -215,9 +215,82 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         currentY += 7
         const articles = Array.isArray(booking.articles) ? booking.articles : []
         doc.text(`No. Of Pkgs : ${articles.length}`, leftColumnX, currentY)
-        doc.text(`Art Type : ${articles[0]?.artType || 'BOX'}`, leftColumnX + 40, currentY)
         doc.text(`No. Of Pkgs : ${articles.length}`, rightColumnX, currentY)
-        doc.text(`Art Type : ${articles[0]?.artType || 'BOX'}`, rightColumnX + 40, currentY)
+        
+        
+        
+        // Add article type summary
+        if (articles.length > 0) {
+         
+          
+          // Add detailed article information
+          currentY += 7
+          doc.setFontSize(7) // Smaller font for detailed list
+          doc.text("Article Details:", leftColumnX, currentY)
+          doc.text("Article Details:", rightColumnX, currentY)
+          
+          // Create a table-like structure for article details
+          currentY += 4
+          let leftCurrentY = currentY
+          let rightCurrentY = currentY
+          
+          // Headers
+          doc.text("Name", leftColumnX, leftCurrentY)
+          doc.text("Type", leftColumnX + 25, leftCurrentY)
+          doc.text("Qty", leftColumnX + 40, leftCurrentY)
+          
+          doc.text("Name", rightColumnX, rightCurrentY)
+          doc.text("Type", rightColumnX + 25, rightCurrentY)
+          doc.text("Qty", rightColumnX + 40, rightCurrentY)
+          
+          leftCurrentY += 4
+          rightCurrentY += 4
+          
+          // List each article (limit to first 5 to save space)
+          const displayLimit = Math.min(articles.length, 100)
+          for (let i = 0; i < displayLimit; i++) {
+            const article = articles[i]
+            const name = article.articleName || 'Item ' + (i + 1)
+            const type = article.artType || 'BOX'
+            const qty = article.quantity || 1
+            
+            doc.text(name.substring(0, 15), leftColumnX, leftCurrentY)
+            doc.text(type, leftColumnX + 25, leftCurrentY)
+            doc.text(qty.toString(), leftColumnX + 40, leftCurrentY)
+            
+            doc.text(name.substring(0, 15), rightColumnX, rightCurrentY)
+            doc.text(type, rightColumnX + 25, rightCurrentY)
+            doc.text(qty.toString(), rightColumnX + 40, rightCurrentY)
+            
+            leftCurrentY += 4
+            rightCurrentY += 4
+          }
+          
+          // If there are more articles than we can display
+          if (articles.length > displayLimit) {
+            doc.text(`... and ${articles.length - displayLimit} more items`, leftColumnX, leftCurrentY)
+            doc.text(`... and ${articles.length - displayLimit} more items`, rightColumnX, rightCurrentY)
+            leftCurrentY += 4
+            rightCurrentY += 4
+          }
+          
+          // Calculate total quantity
+          const totalQuantity = articles.reduce((sum, article) => sum + (article.quantity || 1), 0)
+          doc.text(`Total Items: ${totalQuantity}`, leftColumnX, leftCurrentY)
+          doc.text(`Total Items: ${totalQuantity}`, rightColumnX, rightCurrentY)
+          
+          // Update the current Y position
+          currentY = Math.max(leftCurrentY, rightCurrentY) + 2
+          
+          // Reset font size
+          doc.setFontSize(8)
+        } else {
+          // If no articles, just show a message
+          currentY += 5
+          doc.text("No article details available", leftColumnX, currentY)
+          doc.text("No article details available", rightColumnX, currentY)
+          currentY += 5
+        }
         
         // Add total amount
         currentY += 5
@@ -237,26 +310,25 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.text(`Print Time : ${printTime}`, leftColumnX, currentY)
         doc.text(`Print Time : ${printTime}`, rightColumnX, currentY)
         
-        // Add delivery address with text wrapping
-        currentY += 5
+        // Add delivery address with text wrapping - add more spacing
+        currentY += 10 // Increased from 5 to 10 for more spacing
         doc.text(`Delivery Address :`, leftColumnX, currentY)
         
-        // First add the consignee name
+        // Add the address directly with more spacing
         const nameLeftY = addWrappedText(booking.consigneeName || '', leftColumnX + 30, currentY, 60, 4)
-        
+
         // Then add the address on the next line
         const addrLeftY = addWrappedText(booking.consigneeAddress || '', leftColumnX + 30, nameLeftY, 60, 4)
         
         doc.text(`Delivery Address :`, rightColumnX, currentY)
         
-        // First add the consignee name
+        // Add the address directly with more spacing
         const nameRightY = addWrappedText(booking.consigneeName || '', rightColumnX + 30, currentY, 60, 4)
-        
-        // Then add the address on the next line
-        const addrRightY = addWrappedText(booking.consigneeAddress || '', rightColumnX + 30, nameRightY, 60, 4)
-        
-        // Update currentY to the maximum Y position
-        currentY = Math.max(addrLeftY, addrRightY) + 6
+
+// Then add the address on the next line
+const addrRightY = addWrappedText(booking.consigneeAddress || '', rightColumnX + 30, nameRightY, 60, 4)
+        // Update currentY to the maximum Y position with additional spacing
+        currentY = Math.max(addrLeftY, addrRightY) + 8 // Increased from 6 to 8
         
         // Add delivery contact
         doc.text(`Delivery Contact : ${booking.consigneeMobile}`, leftColumnX, currentY)
