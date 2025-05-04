@@ -240,10 +240,20 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         // Add delivery address with text wrapping
         currentY += 5
         doc.text(`Delivery Address :`, leftColumnX, currentY)
-        const addrLeftY = addWrappedText(booking.consigneeAddress || '', leftColumnX + 30, currentY, 60, 4)
+        
+        // First add the consignee name
+        const nameLeftY = addWrappedText(booking.consigneeName || '', leftColumnX + 30, currentY, 60, 4)
+        
+        // Then add the address on the next line
+        const addrLeftY = addWrappedText(booking.consigneeAddress || '', leftColumnX + 30, nameLeftY, 60, 4)
         
         doc.text(`Delivery Address :`, rightColumnX, currentY)
-        const addrRightY = addWrappedText(booking.consigneeAddress || '', rightColumnX + 30, currentY, 60, 4)
+        
+        // First add the consignee name
+        const nameRightY = addWrappedText(booking.consigneeName || '', rightColumnX + 30, currentY, 60, 4)
+        
+        // Then add the address on the next line
+        const addrRightY = addWrappedText(booking.consigneeAddress || '', rightColumnX + 30, nameRightY, 60, 4)
         
         // Update currentY to the maximum Y position
         currentY = Math.max(addrLeftY, addrRightY) + 6
