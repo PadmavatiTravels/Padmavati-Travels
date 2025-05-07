@@ -14,7 +14,7 @@ export enum BookingType {
 }
 
 export interface Booking {
-  id: string
+  id: string;
   bookingType: BookingType
   bookingDate: string
   deliveryDestination: string
@@ -22,12 +22,13 @@ export interface Booking {
   // Consignor (From)
   consignorName: string
   consignorMobile: string
-  consignorAddress: string
+  consignorAddress?: string;
 
   // Consignee (To)
   consigneeName: string
   consigneeMobile: string
-  consigneeAddress: string
+  consigneeAddress?: string;
+  consigneeCompanyName?: string;
 
   articles: Article[]
   totalArticles: number

@@ -104,6 +104,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     consignorName: "",
     consignorMobile: "",
     consignorAddress: "",
+    consigneeCompanyName: "",
     consigneeName: "",
     consigneeMobile: "",
     consigneeAddress: "",
@@ -249,10 +250,10 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     // Save the selected value to field history
     saveToFieldHistory(name, value)
 
-    // If destination is selected, fetch consignee details
-    if (name === "deliveryDestination" && value && value !== "add-new") {
-      fetchConsigneeDetails(value)
-    }
+    // Disabled auto-fill of consignee details as per user request
+    // if (name === "deliveryDestination" && value && value !== "add-new") {
+    //   fetchConsigneeDetails(value)
+    // }
   }
 
   // Add this new function to fetch and populate consignee details
@@ -264,6 +265,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         setFormData((prev) => ({
           ...prev,
           consigneeName: consigneeDetails.name || prev.consigneeName,
+          consigneeCompanyName: consigneeDetails.companyName || prev.consigneeCompanyName,
           consigneeMobile: consigneeDetails.mobile || prev.consigneeMobile,
           consigneeAddress: consigneeDetails.address || prev.consigneeAddress,
         }))
@@ -530,6 +532,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         consignorMobile: formData.consignorMobile,
         consignorAddress: formData.consignorAddress,
         consigneeName: formData.consigneeName,
+        consigneeCompanyName: formData.consigneeCompanyName,
         consigneeMobile: formData.consigneeMobile,
         consigneeAddress: formData.consigneeAddress,
         remarks: formData.remarks,
@@ -761,6 +764,18 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
               {/* Consignee (To) Information */}
               <div className="space-y-3 border rounded p-3">
                 <div className="font-medium">Consignee (To)</div>
+                <div className="space-y-2 relative">
+                  <Label htmlFor="consigneeCompanyName">Company Name</Label>
+                  <Input
+                    id="consigneeCompanyName"
+                    name="consigneeCompanyName"
+                    value={formData.consigneeCompanyName}
+                    onChange={handleInputChange}
+                    required
+                    autoComplete="off"
+                  />
+                  {activeSuggestionField === "consigneeCompanyName" && renderSuggestions()}
+                </div>
                 <div className="space-y-2 relative">
                   <div className="flex items-center">
                     <Label htmlFor="consigneeName">Name</Label>

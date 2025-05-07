@@ -122,6 +122,7 @@ export const createBooking = async (bookingData: Partial<Booking>): Promise<stri
 
       // Consignee details
       consigneeName: bookingData.consigneeName || "",
+      consigneeCompanyName: bookingData.consigneeCompanyName || "",
       consigneeMobile: bookingData.consigneeMobile || "",
       consigneeAddress: bookingData.consigneeAddress || "",
 

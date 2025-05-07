@@ -4,6 +4,7 @@ import { db } from '@/lib/firebase';
 export type ConsigneeDetails = {
   name: string;
   mobile: string;
+CompanyName: string;
   address: string;
   gstNo?: string;
 };
