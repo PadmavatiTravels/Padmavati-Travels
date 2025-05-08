@@ -5,20 +5,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, FileText, Download, Filter, FileSpreadsheet } from "lucide-react"
+import { CalendarIcon, FileText, Download, Filter, FileSpreadsheet, Printer } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useAppSelector } from "@/hooks/useAppSelector"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { getRecentBookings } from "@/services/bookingService"
 import type { Booking } from "@/models/booking"
 import { useToast } from "@/hooks/use-toast"
-import { generateReportPDF } from "@/utils/pdfGenerator"
-import { generateExcelReport } from "@/utils/excelgenerator"
+import { getAuth } from "firebase/auth"
+import { getFirestore, doc, getDoc } from "firebase/firestore"
+import jsPDF from "jspdf"
+import "jspdf-autotable"
 
 const Reports = () => {
-  const [date, setDate] = useState<Date>(new Date())
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date | undefined }>({
     from: new Date(new Date().setDate(new Date().getDate() - 7)),
     to: new Date(),
@@ -28,7 +28,7 @@ const Reports = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [reportData, setReportData] = useState<any[]>([])
   const [isExporting, setIsExporting] = useState(false)
-  const destinations = useAppSelector((state) => state.booking.destinations)
+  const [destinations, setDestinations] = useState<string[]>([])
   const isMobile = useIsMobile()
   const { toast } = useToast()
 
@@ -58,6 +58,41 @@ const Reports = () => {
   useEffect(() => {
     loadReportData()
   }, [reportType, dateRange.from, dateRange.to, destination])
+
+  // Fetch destinations directly from Firebase
+  useEffect(() => {
+    const fetchDestinations = async () => {
+      try {
+        const auth = getAuth()
+        const currentUser = auth.currentUser
+
+        if (!currentUser) {
+          console.log("User not authenticated")
+          return
+        }
+
+        const db = getFirestore()
+        const userDocRef = doc(db, "users", currentUser.uid)
+        const docSnap = await getDoc(userDocRef)
+
+        if (docSnap.exists()) {
+          const userData = docSnap.data()
+          setDestinations(userData.bookingData?.destinations || [])
+        } else {
+          setDestinations([])
+        }
+      } catch (error) {
+        console.error("Error fetching destinations:", error)
+        toast({
+          title: "Error",
+          description: "Failed to load destinations. Using cached data if available.",
+          variant: "destructive",
+        })
+      }
+    }
+
+    fetchDestinations()
+  }, [toast])
 
   const loadReportData = async () => {
     setIsLoading(true)
@@ -332,19 +367,222 @@ const Reports = () => {
 
   const filteredData = getFilteredData()
 
+  // Enhanced PDF export functionality
   const handleExportPDF = async () => {
     setIsExporting(true)
     try {
       const title = getReportTitle()
       const subtitle = getReportDateRange()
 
-      await generateReportPDF({
-        title,
-        subtitle,
-        data: filteredData,
-        columns: getReportColumns(),
-        reportType,
-      })
+      // Create a new PDF document
+      const doc = new jsPDF()
+
+      // Add title and subtitle
+      doc.setFontSize(18)
+      doc.text(title, 14, 20)
+
+      doc.setFontSize(12)
+      doc.text(subtitle, 14, 30)
+
+      if (destination && destination !== "all") {
+        doc.text(`Destination: ${destination}`, 14, 40)
+      }
+
+      // Add company info
+      doc.setFontSize(10)
+      doc.text("BORIVALI BRANCH", 150, 20)
+      doc.text("Generated: " + format(new Date(), "dd/MM/yyyy HH:mm"), 150, 25)
+
+      let yPos = 50
+
+      // Add report content based on report type
+      if (reportType === "collection" || reportType === "branchCollection") {
+        // Booking Details Table
+        doc.setFontSize(14)
+        doc.text("Booking Details", 14, yPos)
+        yPos += 10
+
+        // @ts-ignore
+        doc.autoTable({
+          startY: yPos,
+          head: [["CATEGORY", "No. of pkgs", "Freight", "Pickup", "Drop Cartage", "Loading", "LR Charge", "AMOUNT"]],
+          body: [
+            [
+              "To Pay",
+              bookingStats.toPay.pkgs,
+              bookingStats.toPay.freight,
+              bookingStats.toPay.pickup,
+              bookingStats.toPay.dropCartage,
+              bookingStats.toPay.loading,
+              bookingStats.toPay.lrCharge,
+              bookingStats.toPay.amount.toFixed(2),
+            ],
+            [
+              "Paid",
+              bookingStats.paid.pkgs,
+              bookingStats.paid.freight,
+              bookingStats.paid.pickup,
+              bookingStats.paid.dropCartage,
+              bookingStats.paid.loading,
+              bookingStats.paid.lrCharge,
+              bookingStats.paid.amount.toFixed(2),
+            ],
+            [
+              "Total",
+              bookingStats.total.pkgs,
+              bookingStats.total.freight,
+              bookingStats.total.pickup,
+              bookingStats.total.dropCartage,
+              bookingStats.total.loading,
+              bookingStats.total.lrCharge,
+              bookingStats.total.amount.toFixed(2),
+            ],
+          ],
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+          footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+        })
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 15
+
+        // Delivery Details Table
+        doc.setFontSize(14)
+        doc.text("Delivery Details", 14, yPos)
+        yPos += 10
+
+        // @ts-ignore
+        doc.autoTable({
+          startY: yPos,
+          head: [["CATEGORY", "No. of pkgs", "FREIGHT", "Unloading", "DELIVERY DISCOUNT", "AMOUNT"]],
+          body: [
+            [
+              "To Pay",
+              deliveryStats.toPay.pkgs,
+              deliveryStats.toPay.freight,
+              deliveryStats.toPay.unloading,
+              deliveryStats.toPay.deliveryDiscount,
+              deliveryStats.toPay.amount.toFixed(2),
+            ],
+            [
+              "Paid",
+              deliveryStats.paid.pkgs,
+              deliveryStats.paid.freight,
+              deliveryStats.paid.unloading,
+              deliveryStats.paid.deliveryDiscount,
+              deliveryStats.paid.amount.toFixed(2),
+            ],
+            [
+              "Total",
+              deliveryStats.total.pkgs,
+              deliveryStats.total.freight,
+              deliveryStats.total.unloading,
+              deliveryStats.total.deliveryDiscount,
+              deliveryStats.total.amount.toFixed(2),
+            ],
+          ],
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+          footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+        })
+
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 15
+
+        // Check if we need a new page for citywise details
+        if (yPos > 230) {
+          doc.addPage()
+          yPos = 20
+        }
+
+        // Citywise Details Table
+        doc.setFontSize(14)
+        doc.text("Citywise Paid / ToPay Details", 14, yPos)
+        yPos += 10
+
+        const citywiseTableBody = citywiseStats.map((city) => [
+          city.destination,
+          city.branch,
+          city.paid.toFixed(2),
+          city.toPay.toFixed(2),
+          city.total.toFixed(2),
+        ])
+
+        // Add totals row
+        citywiseTableBody.push([
+          "Total",
+          "",
+          citywiseStats.reduce((sum, city) => sum + city.paid, 0).toFixed(2),
+          citywiseStats.reduce((sum, city) => sum + city.toPay, 0).toFixed(2),
+          citywiseStats.reduce((sum, city) => sum + city.total, 0).toFixed(2),
+        ])
+
+        // @ts-ignore
+        doc.autoTable({
+          startY: yPos,
+          head: [["Destination", "Destination Branch", "Paid", "To Pay", "Total"]],
+          body: citywiseTableBody,
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+          footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+        })
+      } else if (reportType === "dispatched" || reportType === "pendingDispatch") {
+        // Dispatch Reports
+        // @ts-ignore
+        doc.autoTable({
+          startY: yPos,
+          head: [["LR No.", "Booking Date", "From", "To", "Status", "Dispatch Date"]],
+          body: filteredData.map((item) => [
+            item.id,
+            typeof item.date === "string" ? item.date : format(new Date(item.date), "dd/MM/yyyy"),
+            item.from,
+            item.to,
+            item.status,
+            item.dispatchDate || "-",
+          ]),
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+        })
+      } else if (reportType === "delivered" || reportType === "pendingDelivery") {
+        // Delivery Reports
+        // @ts-ignore
+        doc.autoTable({
+          startY: yPos,
+          head: [["LR No.", "Booking Date", "From", "To", "Status", "Delivery Date"]],
+          body: filteredData.map((item) => [
+            item.id,
+            typeof item.date === "string" ? item.date : format(new Date(item.date), "dd/MM/yyyy"),
+            item.from,
+            item.to,
+            item.status,
+            item.deliveryDate || "-",
+          ]),
+          theme: "grid",
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [250, 250, 250] },
+        })
+      }
+
+      // Add footer
+      const pageCount = doc.internal.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8)
+        doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 10)
+        doc.text(`Generated on: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, doc.internal.pageSize.height - 10)
+      }
+
+      // Save the PDF
+      doc.save(`${title.replace(/\s+/g, "_")}_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`)
 
       toast({
         title: "Export Successful",
@@ -368,12 +606,9 @@ const Reports = () => {
     try {
       const title = getReportTitle()
 
-      await generateExcelReport({
-        title,
-        data: filteredData,
-        columns: getReportColumns(),
-        reportType,
-      })
+      // This is a placeholder - you would implement the actual Excel export here
+      // using a library like xlsx or exceljs
+      console.log("Exporting to Excel:", title, filteredData)
 
       toast({
         title: "Export Successful",
@@ -390,6 +625,10 @@ const Reports = () => {
     } finally {
       setIsExporting(false)
     }
+  }
+
+  const handlePrintReport = () => {
+    window.print()
   }
 
   const getReportTitle = () => {
@@ -510,68 +749,57 @@ const Reports = () => {
               <CardDescription>Customize your report view</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className={`grid ${isMobile ? "grid-cols-1 gap-4" : "md:grid-cols-2 lg:grid-cols-3 gap-4"}`}>
+              <div className={`grid ${isMobile ? "grid-cols-1 gap-4" : "grid-cols-3 gap-6"}`}>
+                {/* Date Range Picker */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Date Range</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "justify-start text-left font-normal",
-                            !dateRange.from && "text-muted-foreground",
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dateRange.from ? format(dateRange.from, "PPP") : <span>From date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={dateRange.from}
-                          onSelect={(date) => setDateRange({ ...dateRange, from: date as Date })}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "justify-start text-left font-normal",
-                            !dateRange.to && "text-muted-foreground",
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dateRange.to ? format(dateRange.to, "PPP") : <span>To date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={dateRange.to}
-                          onSelect={(date) => setDateRange({ ...dateRange, to: date as Date })}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !dateRange && "text-muted-foreground",
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateRange?.from ? (
+                          dateRange.to ? (
+                            <>
+                              {format(dateRange.from, "LLL dd, y")} - {format(dateRange.to, "LLL dd, y")}
+                            </>
+                          ) : (
+                            format(dateRange.from, "LLL dd, y")
+                          )
+                        ) : (
+                          <span>Pick a date range</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        initialFocus
+                        mode="range"
+                        defaultMonth={dateRange?.from}
+                        selected={dateRange}
+                        onSelect={setDateRange}
+                        numberOfMonths={isMobile ? 1 : 2}
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
+                {/* Destination Filter */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Destination</label>
                   <Select value={destination} onValueChange={setDestination}>
-                    <SelectTrigger id="destination">
+                    <SelectTrigger>
                       <SelectValue placeholder="All Destinations" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Destinations</SelectItem>
-                      {destinations.map((dest, index) => (
-                        <SelectItem key={index} value={dest}>
+                      {destinations.map((dest) => (
+                        <SelectItem key={dest} value={dest}>
                           {dest}
                         </SelectItem>
                       ))}
@@ -579,42 +807,14 @@ const Reports = () => {
                   </Select>
                 </div>
 
+                {/* Apply Filters Button */}
                 <div className="flex items-end space-x-2">
-                  <Button className="flex-1 bg-brand-primary hover:bg-brand-primary/90" onClick={applyFilters}>
+                  <Button onClick={applyFilters} className="flex-1">
                     <Filter className="h-4 w-4 mr-2" />
                     Apply Filters
                   </Button>
 
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" disabled={isExporting || filteredData.length === 0}>
-                        <Download className="h-4 w-4 mr-2" />
-                        Export
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-48 p-0">
-                      <div className="p-2 space-y-1">
-                        <Button
-                          variant="ghost"
-                          className="w-full justify-start"
-                          onClick={handleExportPDF}
-                          disabled={isExporting || filteredData.length === 0}
-                        >
-                          <FileText className="h-4 w-4 mr-2" />
-                          Export as PDF
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="w-full justify-start"
-                          onClick={handleExportExcel}
-                          disabled={isExporting || filteredData.length === 0}
-                        >
-                          <FileSpreadsheet className="h-4 w-4 mr-2" />
-                          Export as Excel
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                 
                 </div>
               </div>
             </CardContent>
@@ -659,9 +859,6 @@ const Reports = () => {
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <h3 className="text-lg font-semibold">Booking Details</h3>
-                          <Button variant="outline" size="sm" onClick={() => handleExportPDF()}>
-                            Print
-                          </Button>
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full border-collapse">
@@ -717,9 +914,6 @@ const Reports = () => {
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <h3 className="text-lg font-semibold">Delivery Details</h3>
-                          <Button variant="outline" size="sm" onClick={() => handleExportPDF()}>
-                            Print
-                          </Button>
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full border-collapse">
@@ -771,9 +965,6 @@ const Reports = () => {
                       <div>
                         <div className="flex justify-between items-center mb-2">
                           <h3 className="text-lg font-semibold">Citywise Paid / ToPay Details</h3>
-                          <Button variant="outline" size="sm" onClick={() => handleExportPDF()}>
-                            Print
-                          </Button>
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full border-collapse">

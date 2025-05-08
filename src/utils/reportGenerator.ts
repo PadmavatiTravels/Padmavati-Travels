@@ -1,5 +1,4 @@
 import { generateReportPDF } from "./pdfGenerator"
-import { generateExcelReport } from "./excelGenerator"
 
 interface ReportOptions {
   title: string
@@ -72,13 +71,4 @@ export const generatePDFReport = async (options: ReportOptions): Promise<void> =
   }
 }
 
-// Generate and download Excel report
-export const generateExcelReportFile = async (options: ReportOptions): Promise<void> => {
-  try {
-    const { title, data, columns, reportType } = options
-    await generateExcelReport({ title, data, columns, reportType })
-  } catch (error) {
-    console.error("Error generating Excel report:", error)
-    throw error
-  }
-}
+// Note: Excel report generation function has been removed
