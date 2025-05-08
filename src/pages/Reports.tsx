@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAppSelector } from "@/hooks/useAppSelector"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { getBookingsByType, getRecentBookings } from "@/services/bookingService"
-import { BookingType, type Booking } from "@/models/booking"
+import { getRecentBookings } from "@/services/bookingService"
+import type { Booking } from "@/models/booking"
 import { useToast } from "@/hooks/use-toast"
 import { generateReportPDF } from "@/utils/pdfGenerator"
 import { generateExcelReport } from "@/utils/excelgenerator"
@@ -32,9 +32,32 @@ const Reports = () => {
   const isMobile = useIsMobile()
   const { toast } = useToast()
 
+  // Stats for detailed reports
+  const [bookingStats, setBookingStats] = useState({
+    toPay: { count: 0, pkgs: 0, freight: 0, pickup: 0, dropCartage: 0, loading: 0, lrCharge: 0, amount: 0 },
+    paid: { count: 0, pkgs: 0, freight: 0, pickup: 0, dropCartage: 0, loading: 0, lrCharge: 0, amount: 0 },
+    total: { count: 0, pkgs: 0, freight: 0, pickup: 0, dropCartage: 0, loading: 0, lrCharge: 0, amount: 0 },
+  })
+
+  const [deliveryStats, setDeliveryStats] = useState({
+    toPay: { count: 0, pkgs: 0, freight: 0, unloading: 0, deliveryDiscount: 0, amount: 0 },
+    paid: { count: 0, pkgs: 0, freight: 0, unloading: 0, deliveryDiscount: 0, amount: 0 },
+    total: { count: 0, pkgs: 0, freight: 0, unloading: 0, deliveryDiscount: 0, amount: 0 },
+  })
+
+  const [citywiseStats, setCitywiseStats] = useState<
+    Array<{
+      destination: string
+      branch: string
+      paid: number
+      toPay: number
+      total: number
+    }>
+  >([])
+
   useEffect(() => {
     loadReportData()
-  }, [reportType])
+  }, [reportType, dateRange.from, dateRange.to, destination])
 
   const loadReportData = async () => {
     setIsLoading(true)
@@ -44,22 +67,166 @@ const Reports = () => {
       switch (reportType) {
         case "collection":
         case "branchCollection":
-          // Get PAID bookings for collection reports
-          const paidBookings = await getBookingsByType(BookingType.PAID)
-          data = paidBookings.map((booking: Booking) => ({
+          // Get all bookings for the selected date range
+          const allBookings = await getRecentBookings(100)
+
+          // Filter bookings by date range
+          const filteredBookings = allBookings.filter((booking: Booking) => {
+            if (!dateRange.from || !dateRange.to) return true
+
+            const bookingDate = new Date(booking.bookingDate)
+            const fromDate = new Date(dateRange.from)
+            fromDate.setHours(0, 0, 0, 0)
+
+            const toDate = new Date(dateRange.to)
+            toDate.setHours(23, 59, 59, 999)
+
+            return bookingDate >= fromDate && bookingDate <= toDate
+          })
+
+          // Filter by destination if selected
+          const destinationFilteredBookings =
+            destination && destination !== "all"
+              ? filteredBookings.filter((booking: Booking) => booking.deliveryDestination === destination)
+              : filteredBookings
+
+          data = destinationFilteredBookings.map((booking: Booking) => ({
             id: booking.id,
             date: booking.bookingDate,
-            branch: "Bangalore", // Default branch for demo
+            branch: "BORIVALI", // Default branch
             destination: booking.deliveryDestination,
             amount: booking.totalAmount,
             type: booking.bookingType,
+            // Add additional fields for detailed reports
+            pkgs: booking.articles?.reduce((sum, article) => sum + (article.quantity || 1), 0) || 0,
+            freight: booking.freightCharge || 0,
+            pickup: booking.pickupCharge || 0,
+            dropCartage: booking.dropCartage || 0,
+            loading: booking.loadingCharge || 0,
+            lrCharge: booking.lrCharge || 0,
+            unloading: booking.unloadingCharge || 0,
+            deliveryDiscount: booking.deliveryDiscount || 0,
           }))
+
+          // Calculate booking statistics
+          const bookingToPayItems = data.filter((item) => item.type === "TO PAY")
+          const bookingPaidItems = data.filter((item) => item.type === "PAID")
+
+          const bookingToPayStats = {
+            count: bookingToPayItems.length,
+            pkgs: bookingToPayItems.reduce((sum, item) => sum + item.pkgs, 0),
+            freight: bookingToPayItems.reduce((sum, item) => sum + item.freight, 0),
+            pickup: bookingToPayItems.reduce((sum, item) => sum + item.pickup, 0),
+            dropCartage: bookingToPayItems.reduce((sum, item) => sum + item.dropCartage, 0),
+            loading: bookingToPayItems.reduce((sum, item) => sum + item.loading, 0),
+            lrCharge: bookingToPayItems.reduce((sum, item) => sum + item.lrCharge, 0),
+            amount: bookingToPayItems.reduce((sum, item) => sum + item.amount, 0),
+          }
+
+          const bookingPaidStats = {
+            count: bookingPaidItems.length,
+            pkgs: bookingPaidItems.reduce((sum, item) => sum + item.pkgs, 0),
+            freight: bookingPaidItems.reduce((sum, item) => sum + item.freight, 0),
+            pickup: bookingPaidItems.reduce((sum, item) => sum + item.pickup, 0),
+            dropCartage: bookingPaidItems.reduce((sum, item) => sum + item.dropCartage, 0),
+            loading: bookingPaidItems.reduce((sum, item) => sum + item.loading, 0),
+            lrCharge: bookingPaidItems.reduce((sum, item) => sum + item.lrCharge, 0),
+            amount: bookingPaidItems.reduce((sum, item) => sum + item.amount, 0),
+          }
+
+          setBookingStats({
+            toPay: bookingToPayStats,
+            paid: bookingPaidStats,
+            total: {
+              count: bookingToPayStats.count + bookingPaidStats.count,
+              pkgs: bookingToPayStats.pkgs + bookingPaidStats.pkgs,
+              freight: bookingToPayStats.freight + bookingPaidStats.freight,
+              pickup: bookingToPayStats.pickup + bookingPaidStats.pickup,
+              dropCartage: bookingToPayStats.dropCartage + bookingPaidStats.dropCartage,
+              loading: bookingToPayStats.loading + bookingPaidStats.loading,
+              lrCharge: bookingToPayStats.lrCharge + bookingPaidStats.lrCharge,
+              amount: bookingToPayStats.amount + bookingPaidStats.amount,
+            },
+          })
+
+          // Calculate delivery statistics (for bookings with status "Delivered")
+          const deliveredBookingsFiltered = destinationFilteredBookings.filter(
+            (booking: Booking) => booking.status === "Delivered" || booking.status === "Received",
+          )
+
+          const deliveryToPayItems = deliveredBookingsFiltered.filter((booking) => booking.bookingType === "TO PAY")
+          const deliveryPaidItems = deliveredBookingsFiltered.filter((booking) => booking.bookingType === "PAID")
+
+          const deliveryToPayStats = {
+            count: deliveryToPayItems.length,
+            pkgs: deliveryToPayItems.reduce(
+              (sum, item) => sum + (item.articles?.reduce((s, a) => s + (a.quantity || 1), 0) || 0),
+              0,
+            ),
+            freight: deliveryToPayItems.reduce((sum, item) => sum + (item.freightCharge || 0), 0),
+            unloading: deliveryToPayItems.reduce((sum, item) => sum + (item.unloadingCharge || 0), 0),
+            deliveryDiscount: deliveryToPayItems.reduce((sum, item) => sum + (item.deliveryDiscount || 0), 0),
+            amount: deliveryToPayItems.reduce(
+              (sum, item) => sum + (item.freightCharge || 0) - (item.deliveryDiscount || 0),
+              0,
+            ),
+          }
+
+          const deliveryPaidStats = {
+            count: deliveryPaidItems.length,
+            pkgs: deliveryPaidItems.reduce(
+              (sum, item) => sum + (item.articles?.reduce((s, a) => s + (a.quantity || 1), 0) || 0),
+              0,
+            ),
+            freight: deliveryPaidItems.reduce((sum, item) => sum + (item.freightCharge || 0), 0),
+            unloading: deliveryPaidItems.reduce((sum, item) => sum + (item.unloadingCharge || 0), 0),
+            deliveryDiscount: deliveryPaidItems.reduce((sum, item) => sum + (item.deliveryDiscount || 0), 0),
+            amount: deliveryPaidItems.reduce(
+              (sum, item) => sum + (item.freightCharge || 0) - (item.deliveryDiscount || 0),
+              0,
+            ),
+          }
+
+          setDeliveryStats({
+            toPay: deliveryToPayStats,
+            paid: deliveryPaidStats,
+            total: {
+              count: deliveryToPayStats.count + deliveryPaidStats.count,
+              pkgs: deliveryToPayStats.pkgs + deliveryPaidStats.pkgs,
+              freight: deliveryToPayStats.freight + deliveryPaidStats.freight,
+              unloading: deliveryToPayStats.unloading + deliveryPaidStats.unloading,
+              deliveryDiscount: deliveryToPayStats.deliveryDiscount + deliveryPaidStats.deliveryDiscount,
+              amount: deliveryToPayStats.amount + deliveryPaidStats.amount,
+            },
+          })
+
+          // Calculate citywise statistics
+          const destinations = [...new Set(destinationFilteredBookings.map((booking) => booking.deliveryDestination))]
+          const citywiseData = destinations.map((dest) => {
+            const destBookings = destinationFilteredBookings.filter((booking) => booking.deliveryDestination === dest)
+            const paidAmount = destBookings
+              .filter((booking) => booking.bookingType === "PAID")
+              .reduce((sum, booking) => sum + (booking.totalAmount || 0), 0)
+            const toPayAmount = destBookings
+              .filter((booking) => booking.bookingType === "TO PAY")
+              .reduce((sum, booking) => sum + (booking.totalAmount || 0), 0)
+
+            return {
+              destination: dest,
+              branch: "BORIVALI", // Default branch
+              paid: paidAmount,
+              toPay: toPayAmount,
+              total: paidAmount + toPayAmount,
+            }
+          })
+
+          setCitywiseStats(citywiseData)
           break
 
         case "dispatched":
           // Get all bookings with "Dispatched" status
-          const allBookings = await getRecentBookings(50)
-          data = allBookings
+          const dispatchedBookings = await getRecentBookings(50)
+          data = dispatchedBookings
             .filter((booking: Booking) => booking.status === "Dispatched")
             .map((booking: Booking) => ({
               id: booking.id,
@@ -459,7 +626,7 @@ const Reports = () => {
               <CardTitle>{getReportTitle()}</CardTitle>
               <CardDescription>
                 {getReportDateRange()}
-                {destination && destination !== "all" ? `| Destination: ${destination}` : null}
+                {destination && destination !== "all" ? ` | Destination: ${destination}` : null}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -472,49 +639,185 @@ const Reports = () => {
                   <p className="text-gray-500">No data found for the selected filters</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="space-y-8">
                   {(reportType === "collection" || reportType === "branchCollection") && (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="py-3 px-2 text-left">LR No.</th>
-                          <th className="py-3 px-2 text-left">Date</th>
-                          <th className="py-3 px-2 text-left">Branch</th>
-                          <th className="py-3 px-2 text-left">Destination</th>
-                          <th className="py-3 px-2 text-left">Type</th>
-                          <th className="py-3 px-2 text-right">Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredData.map((item) => (
-                          <tr key={item.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-2">{item.id}</td>
-                            <td className="py-3 px-2">{item.date}</td>
-                            <td className="py-3 px-2">{item.branch}</td>
-                            <td className="py-3 px-2">{item.destination}</td>
-                            <td className="py-3 px-2">
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs 
-                                ${item.type === "PAID" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}
-                              >
-                                {item.type}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2 text-right">₹{item.amount.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                        <tr className="bg-gray-50 font-medium">
-                          <td className="py-3 px-2" colSpan={5}>
-                            Total
-                          </td>
-                          <td className="py-3 px-2 text-right">
-                            ₹{filteredData.reduce((total, item) => total + item.amount, 0).toFixed(2)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <>
+                      {/* Source Branch and Date Information */}
+                      <div className="flex flex-wrap justify-between items-center text-sm mb-4">
+                        <div>
+                          <strong>Source Branch:</strong> BORIVALI
+                        </div>
+                        <div>
+                          <strong>From Date:</strong>{" "}
+                          {dateRange.from ? format(dateRange.from, "dd-MM-yyyy") : "All time"}
+                          <strong className="ml-4">To Date:</strong>{" "}
+                          {dateRange.to ? format(dateRange.to, "dd-MM-yyyy") : "All time"}
+                        </div>
+                      </div>
+
+                      {/* Booking Details Table */}
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <h3 className="text-lg font-semibold">Booking Details</h3>
+                          <Button variant="outline" size="sm" onClick={() => handleExportPDF()}>
+                            Print
+                          </Button>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border px-2 py-2 text-left">CATEGORY</th>
+                                <th className="border px-2 py-2 text-center">No. of pkgs</th>
+                                <th className="border px-2 py-2 text-center">Freight</th>
+                                <th className="border px-2 py-2 text-center">Pickup</th>
+                                <th className="border px-2 py-2 text-center">Drop Cartage</th>
+                                <th className="border px-2 py-2 text-center">Loading</th>
+                                <th className="border px-2 py-2 text-center">L R Charge</th>
+                                <th className="border px-2 py-2 text-center">AMOUNT</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td className="border px-2 py-2 font-medium">To Pay</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.pkgs}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.freight}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.pickup}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.dropCartage}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.loading}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.lrCharge}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.amount.toFixed(2)}</td>
+                              </tr>
+                              <tr>
+                                <td className="border px-2 py-2 font-medium">Paid</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.paid.pkgs}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.paid.freight}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.paid.pickup}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.paid.dropCartage}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.paid.loading}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.paid.lrCharge}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.paid.amount.toFixed(2)}</td>
+                              </tr>
+                              <tr className="bg-gray-100 font-semibold">
+                                <td className="border px-2 py-2">Total :</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.total.pkgs}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.total.freight}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.total.pickup}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.total.dropCartage}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.total.loading}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.total.lrCharge}</td>
+                                <td className="border px-2 py-2 text-center">{bookingStats.total.amount.toFixed(2)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Delivery Details Table */}
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <h3 className="text-lg font-semibold">Delivery Details</h3>
+                          <Button variant="outline" size="sm" onClick={() => handleExportPDF()}>
+                            Print
+                          </Button>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border px-2 py-2 text-left">CATEGORY</th>
+                                <th className="border px-2 py-2 text-center">No. of pkgs</th>
+                                <th className="border px-2 py-2 text-center">FREIGHT</th>
+                                <th className="border px-2 py-2 text-center">Unloading</th>
+                                <th className="border px-2 py-2 text-center">DELIVERY DISCOUNT</th>
+                                <th className="border px-2 py-2 text-center">AMOUNT</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td className="border px-2 py-2 font-medium">To Pay</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.pkgs}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.freight}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.unloading}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.deliveryDiscount}</td>
+                                <td className="border px-2 py-2 text-center">
+                                  {deliveryStats.toPay.amount.toFixed(2)}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="border px-2 py-2 font-medium">Paid</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.pkgs}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.freight}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.unloading}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.deliveryDiscount}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.amount.toFixed(2)}</td>
+                              </tr>
+                              <tr className="bg-gray-100 font-semibold">
+                                <td className="border px-2 py-2">Total :</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.total.pkgs}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.total.freight}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.total.unloading}</td>
+                                <td className="border px-2 py-2 text-center">{deliveryStats.total.deliveryDiscount}</td>
+                                <td className="border px-2 py-2 text-center">
+                                  {deliveryStats.total.amount.toFixed(2)}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Citywise Paid/ToPay Details */}
+                      <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <h3 className="text-lg font-semibold">Citywise Paid / ToPay Details</h3>
+                          <Button variant="outline" size="sm" onClick={() => handleExportPDF()}>
+                            Print
+                          </Button>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border px-2 py-2 text-left">Destination</th>
+                                <th className="border px-2 py-2 text-left">Destination Branch</th>
+                                <th className="border px-2 py-2 text-center">Paid</th>
+                                <th className="border px-2 py-2 text-center">To Pay</th>
+                                <th className="border px-2 py-2 text-center">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {citywiseStats.map((city, index) => (
+                                <tr key={index}>
+                                  <td className="border px-2 py-2">{city.destination}</td>
+                                  <td className="border px-2 py-2">{city.branch}</td>
+                                  <td className="border px-2 py-2 text-center">{city.paid.toFixed(2)}</td>
+                                  <td className="border px-2 py-2 text-center">{city.toPay.toFixed(2)}</td>
+                                  <td className="border px-2 py-2 text-center">{city.total.toFixed(2)}</td>
+                                </tr>
+                              ))}
+                              <tr className="bg-gray-100 font-semibold">
+                                <td className="border px-2 py-2" colSpan={2}>
+                                  Total :
+                                </td>
+                                <td className="border px-2 py-2 text-center">
+                                  {citywiseStats.reduce((sum, city) => sum + city.paid, 0).toFixed(2)}
+                                </td>
+                                <td className="border px-2 py-2 text-center">
+                                  {citywiseStats.reduce((sum, city) => sum + city.toPay, 0).toFixed(2)}
+                                </td>
+                                <td className="border px-2 py-2 text-center">
+                                  {citywiseStats.reduce((sum, city) => sum + city.total, 0).toFixed(2)}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </>
                   )}
 
+                  {/* Dispatched and Pending Dispatch Reports */}
                   {(reportType === "dispatched" || reportType === "pendingDispatch") && (
                     <table className="w-full text-sm">
                       <thead>
@@ -537,11 +840,11 @@ const Reports = () => {
                             <td className="py-3 px-2">
                               <span
                                 className={`px-2 py-1 rounded-full text-xs 
-                              ${
-                                item.status === "Dispatched"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
+                                ${
+                                  item.status === "Dispatched"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}
                               >
                                 {item.status}
                               </span>
@@ -553,6 +856,7 @@ const Reports = () => {
                     </table>
                   )}
 
+                  {/* Delivered and Pending Delivery Reports */}
                   {(reportType === "delivered" || reportType === "pendingDelivery") && (
                     <table className="w-full text-sm">
                       <thead>
@@ -575,11 +879,11 @@ const Reports = () => {
                             <td className="py-3 px-2">
                               <span
                                 className={`px-2 py-1 rounded-full text-xs 
-                              ${
-                                item.status === "Delivered"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-yellow-100 text-yellow-800"
-                              }`}
+                                ${
+                                  item.status === "Delivered"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}
                               >
                                 {item.status}
                               </span>
