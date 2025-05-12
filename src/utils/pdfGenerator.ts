@@ -144,6 +144,16 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.text("Customer Copy", rightColumnX + 10, currentY)
         doc.text("Booking Receipt", rightColumnX + 50, currentY)
         
+        // Add invoice type (TO PAY or PAID) with emphasis
+        currentY += 6 // Reduced from 8
+        doc.setFontSize(9) // Slightly larger for emphasis
+        doc.setFont(undefined, 'bold')
+        // Add the invoice type text prominently
+        doc.text(`INVOICE TYPE: ${booking.bookingType}`, leftColumnX + 10, currentY)
+        doc.text(`INVOICE TYPE: ${booking.bookingType}`, rightColumnX + 10, currentY)
+        doc.setFont(undefined, 'normal')
+        doc.setFontSize(7) // Reset to normal size
+        
         // Add booking queries contact
         currentY += 6 // Reduced from 8
         doc.setFontSize(7) // Reduced from 8

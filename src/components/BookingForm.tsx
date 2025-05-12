@@ -10,7 +10,8 @@ import { Label } from "./ui/label"
 import { Card, CardContent } from "./ui/card"
 import { Trash2 } from "lucide-react"
 import { v4 as uuidv4 } from "uuid"
-import type { Article, BookingType } from "../models/booking"
+import type { Article } from "../models/booking"
+import { BookingType } from "../models/booking"
 import {
   createBooking,
   calculateTotalArticleAmount,
@@ -99,6 +100,9 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
   const [filteredSuggestions, setFilteredSuggestions] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState("")
 
+  // Convert BookingType enum to simple string for invoice type
+  const invoiceTypeValue = formType === BookingType.PAID ? "paid" : "to pay";
+  
   const [formData, setFormData] = useState({
     deliveryDestination: "",
     consignorName: "",
@@ -108,14 +112,41 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     consigneeName: "",
     consigneeMobile: "",
     consigneeAddress: "",
-
+    deliveryContact: "", // Added delivery contact field
     formType: "E-Waybill",
     saidToContain: "",
     remarks: "",
     godown: "",
     status: "Booked",
   })
-
+  useEffect(() => {
+    const autofillConsigneeDetails = async () => {
+      if (formData.consigneeCompanyName) {
+        try {
+          // Search for consignees with matching company name
+          const consigneesRef = collection(db, 'consignees');
+          const q = query(consigneesRef, where("CompanyName", "==", formData.consigneeCompanyName));
+          const snapshot = await getDocs(q);
+          
+          if (!snapshot.empty) {
+            // Use the first matching consignee
+            const consigneeData = snapshot.docs[0].data() as ConsigneeDetails;
+            setFormData((prev) => ({
+              ...prev,
+              consigneeName: consigneeData.name || prev.consigneeName,
+              consigneeMobile: consigneeData.mobile || prev.consigneeMobile,
+              consigneeAddress: consigneeData.address || prev.consigneeAddress,
+              deliveryContact: consigneeData.deliveryContact || prev.deliveryContact,
+            }));
+          }
+        } catch (error) {
+          console.error("Error auto-filling consignee details:", error);
+        }
+      }
+    };
+    
+    autofillConsigneeDetails();
+  }, [formData.consigneeCompanyName]);
   // Autofill related address when deliveryDestination changes
   useEffect(() => {
     const autofillAddress = async () => {
@@ -265,11 +296,12 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         setFormData((prev) => ({
           ...prev,
           consigneeName: consigneeDetails.name || prev.consigneeName,
-          consigneeCompanyName: consigneeDetails.companyName || prev.consigneeCompanyName,
+          consigneeCompanyName: consigneeDetails.CompanyName || prev.consigneeCompanyName,
           consigneeMobile: consigneeDetails.mobile || prev.consigneeMobile,
           consigneeAddress: consigneeDetails.address || prev.consigneeAddress,
+          deliveryContact: consigneeDetails.deliveryContact || prev.deliveryContact, // Added delivery contact
         }))
-
+  
         toast({
           title: "Consignee Details Loaded",
           description: `Loaded details for ${consigneeDetails.name}`,
@@ -460,13 +492,15 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     }
 
     // Save consignee details for future autofill
-    if (formData.deliveryDestination && formData.consigneeName && formData.consigneeMobile) {
+    if (formData.deliveryDestination && formData.consigneeName) {
       try {
         await saveConsigneeDetails(formData.deliveryDestination, {
           name: formData.consigneeName,
+          CompanyName: formData.consigneeCompanyName,
           mobile: formData.consigneeMobile,
-          address: formData.consigneeAddress || "",
-        })
+          address: formData.consigneeAddress,
+          deliveryContact: formData.deliveryContact, // Include delivery contact
+        });
       } catch (saveError) {
         console.error("Error saving consignee details:", saveError)
       }
@@ -550,6 +584,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
 
       const bookingData = {
         bookingType: formType,
+        invoiceType: invoiceTypeValue, // Add the invoice type as a simple string
         bookingDate: today,
         ...formData,
         articles,
@@ -807,7 +842,19 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                   />
                   {activeSuggestionField === "consigneeMobile" && renderSuggestions()}
                 </div>
-
+                <div className="mb-4">
+                <Label htmlFor="deliveryContact" className="block text-sm font-medium mb-1">
+                  Delivery Contact
+                </Label>
+                <Input
+                  id="deliveryContact"
+                  name="deliveryContact"
+                  value={formData.deliveryContact}
+                  onChange={handleInputChange}
+                  className="w-full"
+                  placeholder="Delivery Contact Number"
+                />
+              </div>
                 <div className="space-y-2 relative">
                   <Label htmlFor="consigneeAddress">Address</Label>
                   <Textarea

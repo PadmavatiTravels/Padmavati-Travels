@@ -7,6 +7,7 @@ export type ConsigneeDetails = {
 CompanyName: string;
   address: string;
   gstNo?: string;
+  deliveryContact?: string; 
 };
 
 /**
