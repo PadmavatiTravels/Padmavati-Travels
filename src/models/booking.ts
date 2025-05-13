@@ -14,21 +14,23 @@ export enum BookingType {
 }
 
 export interface Booking {
-  id: string;
+  id: string
   bookingType: BookingType
+  invoiceType?: string // Add this field to store "paid" or "to pay"
   bookingDate: string
   deliveryDestination: string
 
   // Consignor (From)
   consignorName: string
   consignorMobile: string
-  consignorAddress?: string;
+  consignorAddress?: string
 
   // Consignee (To)
   consigneeName: string
   consigneeMobile: string
-  consigneeAddress?: string;
-  consigneeCompanyName?: string;
+  consigneeAddress?: string
+  consigneeCompanyName?: string
+  deliveryContact?: string
 
   articles: Article[]
   totalArticles: number

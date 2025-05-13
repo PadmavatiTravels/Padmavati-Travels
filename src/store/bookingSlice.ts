@@ -68,7 +68,17 @@ export const fetchDropdownOptions = createAsyncThunk("booking/fetchDropdownOptio
 // Async thunk to add a new destination to Firestore and store
 export const addDestinationAsync = createAsyncThunk(
   "booking/addDestinationAsync",
-  async ({ destination, userId }: { destination: string; userId: string }, { rejectWithValue }) => {
+  async ({ 
+    destination, 
+    userId, 
+    consigneeCompanyName, 
+    deliveryContact 
+  }: { 
+    destination: string; 
+    userId: string; 
+    consigneeCompanyName?: string; 
+    deliveryContact?: string; 
+  }, { rejectWithValue }) => {
     try {
       if (!userId) {
         throw new Error("User not authenticated")
@@ -80,16 +90,25 @@ export const addDestinationAsync = createAsyncThunk(
       // First check if the document exists
       const docSnap = await getDoc(userDocRef)
 
+      // Create destination data object with additional fields
+      const destinationData = {
+        name: destination,
+        consigneeCompanyName: consigneeCompanyName || "",
+        deliveryContact: deliveryContact || "",
+      };
+
       if (docSnap.exists()) {
         // Document exists, update it
         await updateDoc(userDocRef, {
           "bookingData.destinations": arrayUnion(destination),
+          "bookingData.destinationDetails": arrayUnion(destinationData),
         })
       } else {
         // Document doesn't exist, create it
         await setDoc(userDocRef, {
           bookingData: {
             destinations: [destination],
+            destinationDetails: [destinationData],
             articleTypes: [],
           },
         })
@@ -103,7 +122,7 @@ export const addDestinationAsync = createAsyncThunk(
       }
       return rejectWithValue("Unknown error")
     }
-  },
+  }
 )
 
 // Async thunk to add a new article type to Firestore and store

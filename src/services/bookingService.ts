@@ -112,6 +112,7 @@ export const createBooking = async (bookingData: Partial<Booking>): Promise<stri
     const newBooking: Booking = {
       id: bookingId, // This is important - the ID field in the document should match the document ID
       bookingType: bookingData.bookingType || BookingType.PAID,
+      invoiceType: bookingData.invoiceType || "", // Include the invoice type
       bookingDate: bookingData.bookingDate || new Date().toISOString().split("T")[0],
       deliveryDestination: bookingData.deliveryDestination || "",
 
@@ -125,6 +126,7 @@ export const createBooking = async (bookingData: Partial<Booking>): Promise<stri
       consigneeCompanyName: bookingData.consigneeCompanyName || "",
       consigneeMobile: bookingData.consigneeMobile || "",
       consigneeAddress: bookingData.consigneeAddress || "",
+      deliveryContact: bookingData.deliveryContact || "", // Ensure delivery contact is included
 
       articles: bookingData.articles || [],
       totalArticles: bookingData.totalArticles || 0,
