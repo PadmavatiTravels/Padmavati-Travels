@@ -898,7 +898,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
               </div>
 
               <div className="grid grid-cols-12 gap-2 mb-2">
-                <div className="col-span-3">Article</div>
                 <div className="col-span-1">Art</div>
                 <div className="col-span-2">Art Type</div>
                 <div className="col-span-2">Said To Cont</div>
@@ -911,20 +910,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                 {articles.map((article, index) => (
                   <div key={article.id} className="border p-3 rounded mb-3">
                     <div className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-3 relative">
-                        <Input
-                          name="articleName"
-                          value={article.articleName}
-                          onChange={(e) => handleArticleChange(index, e)}
-                          placeholder="Article name"
-                          autoComplete="off"
-                          onFocus={() => {
-                            setActiveSuggestionField(`article_articleName`)
-                            setSearchTerm(article.articleName)
-                          }}
-                        />
-                        {activeSuggestionField === `article_articleName` && renderSuggestions()}
-                      </div>
                       <div className="col-span-1">
                         <Input
                           type="number"
@@ -1000,9 +985,10 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
                           type="button"
                           onClick={addArticle}
                           size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 h-8"
+                          variant="outline"
+                          className="h-8 w-8 p-0"
                         >
-                          Add
+                          +
                         </Button>
                       </div>
                     </div>
