@@ -187,7 +187,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
   const [articles, setArticles] = useState<Article[]>([
     {
       id: uuidv4(),
-      articleName: "",
       artType: allArticleTypes.length > 0 ? allArticleTypes[0] : "Box",
       quantity: 1,
       rate: 0,
@@ -429,7 +428,6 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
   const addArticle = () => {
     const newArticle = {
       id: uuidv4(),
-      articleName: "",
       artType: allArticleTypes.length > 0 ? allArticleTypes[0] : "Box",
       quantity: 1,
       rate: 0,
@@ -536,11 +534,11 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     }
 
     // Validate articles
-    const invalidArticles = articles.filter((a) => !a.articleName || a.rate <= 0)
+    const invalidArticles = articles.filter((a) => a.rate <= 0)
     if (invalidArticles.length > 0) {
       toast({
         title: "Validation Error",
-        description: "All articles must have a name and rate",
+        description: "All articles must have a rate",
         variant: "destructive",
       })
       return
