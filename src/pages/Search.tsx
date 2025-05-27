@@ -7,24 +7,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getBookingById, getRecentBookings } from "@/services/bookingService"
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogTrigger 
+} from "@/components/ui/alert-dialog"
+import { getBookingById, getRecentBookings, deleteBooking, searchBookings } from "@/services/bookingService"
 import type { Booking } from "@/models/booking"
 import { useToast } from "@/hooks/use-toast"
-import { SearchIcon, FileDown, Eye, Calendar, Package } from "lucide-react"
+import { SearchIcon, FileDown, Eye, Calendar, Package, Trash2, Edit, X } from "lucide-react"
 import { downloadInvoicePDF, viewInvoicePDF } from "@/utils/pdfGenerator"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useNavigate } from "react-router-dom"
 
 const Search = () => {
   const [searchTerm, setSearchTerm] = useState("")
   const [searchType, setSearchType] = useState("lrNumber")
   const [booking, setBooking] = useState<Booking | null>(null)
+  const [searchResults, setSearchResults] = useState<Booking[]>([])
   const [recentBookings, setRecentBookings] = useState<Booking[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isPdfLoading, setIsPdfLoading] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const { toast } = useToast()
   const isMobile = useIsMobile()
+  const navigate = useNavigate()
 
   useEffect(() => {
     loadRecentBookings()
@@ -56,12 +71,15 @@ const Search = () => {
 
     setIsLoading(true)
     setBooking(null)
+    setSearchResults([])
 
     try {
       if (searchType === "lrNumber") {
+        // Search by LR Number (exact match)
         const foundBooking = await getBookingById(searchTerm.trim())
         if (foundBooking) {
           setBooking(foundBooking as Booking)
+          setSearchResults([foundBooking as Booking])
         } else {
           toast({
             title: "Not Found",
@@ -70,12 +88,34 @@ const Search = () => {
           })
         }
       } else {
-        // For future implementation of other search types
-        toast({
-          title: "Not Implemented",
-          description: `Search by ${searchType} is not implemented yet`,
-          variant: "destructive",
-        })
+        // Search by other criteria (multiple results possible)
+        const results = await searchBookings(searchType, searchTerm.trim())
+        
+        if (results && results.length > 0) {
+          setSearchResults(results)
+          if (results.length === 1) {
+            setBooking(results[0])
+          }
+          
+          toast({
+            title: "Search Results",
+            description: `Found ${results.length} booking${results.length > 1 ? 's' : ''} matching your search`,
+            variant: "default",
+          })
+        } else {
+          const searchTypeLabel = {
+            consignorName: "consignor name",
+            deliveryLocation: "delivery location",
+            consigneeName: "consignee name",
+            mobile: "mobile number"
+          }[searchType] || searchType
+          
+          toast({
+            title: "Not Found",
+            description: `No bookings found matching ${searchTypeLabel}: ${searchTerm}`,
+            variant: "destructive",
+          })
+        }
       }
     } catch (error) {
       console.error("Error searching for booking:", error)
@@ -93,6 +133,16 @@ const Search = () => {
     if (e.key === "Enter") {
       handleSearch()
     }
+  }
+
+  const handleClearSearch = () => {
+    setSearchTerm("")
+    setBooking(null)
+    setSearchResults([])
+  }
+
+  const handleSelectBooking = (selectedBooking: Booking) => {
+    setBooking(selectedBooking)
   }
 
   const handleDownloadInvoice = async (booking: Booking) => {
@@ -145,6 +195,42 @@ const Search = () => {
     }
   }
 
+  const handleDeleteBooking = async (bookingId: string) => {
+    setDeletingId(bookingId)
+    try {
+      await deleteBooking(bookingId)
+      
+      toast({
+        title: "Success",
+        description: `Booking ${bookingId} has been deleted successfully.`,
+      })
+      
+      // Clear the current booking if it was the one deleted
+      if (booking && booking.id === bookingId) {
+        setBooking(null)
+      }
+      
+      // Remove from search results
+      setSearchResults(prev => prev.filter(b => b.id !== bookingId))
+      
+      // Refresh the recent bookings list
+      await loadRecentBookings()
+    } catch (error) {
+      console.error("Error deleting booking:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete booking. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleEditBooking = (bookingId: string) => {
+    navigate(`/booking/edit/${bookingId}`)
+  }
+
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "Delivered":
@@ -159,6 +245,23 @@ const Search = () => {
         return "bg-indigo-100 text-indigo-800"
       default:
         return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const getSearchPlaceholder = () => {
+    switch (searchType) {
+      case "lrNumber":
+        return "Enter LR Number (e.g., LR001)"
+      case "consignorName":
+        return "Enter consignor name"
+      case "consigneeName":
+        return "Enter consignee name"
+      case "deliveryLocation":
+        return "Enter delivery location/destination"
+      case "mobile":
+        return "Enter mobile number"
+      default:
+        return "Enter search term"
     }
   }
 
@@ -177,7 +280,7 @@ const Search = () => {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Search Bookings</CardTitle>
-              <CardDescription>Find bookings by LR Number, Mobile, or Name</CardDescription>
+              <CardDescription>Find bookings by LR Number</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -189,20 +292,35 @@ const Search = () => {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="lrNumber">LR Number</SelectItem>
+                      <SelectItem value="consignorName">Consignor Name</SelectItem>
+                      <SelectItem value="consigneeName">Consignee Name</SelectItem>
+                      <SelectItem value="deliveryLocation">Delivery Location</SelectItem>
                       <SelectItem value="mobile">Mobile Number</SelectItem>
-                      <SelectItem value="name">Customer Name</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="md:col-span-2">
                   <Label htmlFor="searchTerm">Search Term</Label>
-                  <Input
-                    id="searchTerm"
-                    placeholder="Enter search term"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="searchTerm"
+                      placeholder={getSearchPlaceholder()}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      className="pr-8"
+                    />
+                    {searchTerm && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearSearch}
+                        className="absolute right-1 top-1 h-6 w-6 p-0 hover:bg-gray-100"
+                      >
+                        <X size={14} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-end">
                   <Button
@@ -217,6 +335,97 @@ const Search = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Search Results Summary */}
+          {searchResults.length > 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Search Results ({searchResults.length})</CardTitle>
+                <CardDescription>Click on a booking to view full details</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="py-3 px-2 text-left">LR No.</th>
+                        <th className="py-3 px-2 text-left">Date</th>
+                        <th className="py-3 px-2 text-left hidden md:table-cell">From</th>
+                        <th className="py-3 px-2 text-left">To</th>
+                        <th className="py-3 px-2 text-left hidden md:table-cell">Type</th>
+                        <th className="py-3 px-2 text-left">Status</th>
+                        <th className="py-3 px-2 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {searchResults.map((searchBooking) => (
+                        <tr 
+                          key={searchBooking.id} 
+                          className={`border-b hover:bg-gray-50 cursor-pointer ${
+                            booking?.id === searchBooking.id ? 'bg-blue-50 border-blue-200' : ''
+                          }`}
+                          onClick={() => handleSelectBooking(searchBooking)}
+                        >
+                          <td className="py-3 px-2 font-medium">{searchBooking.id}</td>
+                          <td className="py-3 px-2">{searchBooking.bookingDate}</td>
+                          <td className="py-3 px-2 hidden md:table-cell">{searchBooking.consignorName}</td>
+                          <td className="py-3 px-2">{searchBooking.deliveryDestination}</td>
+                          <td className="py-3 px-2 hidden md:table-cell">
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs ${
+                                searchBooking.bookingType === "PAID"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}
+                            >
+                              {searchBooking.bookingType}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2">
+                            <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(searchBooking.status)}`}>
+                              {searchBooking.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleSelectBooking(searchBooking)}
+                                className="h-8 w-8 p-0"
+                                title="View Details"
+                              >
+                                <Eye size={16} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDownloadInvoice(searchBooking)}
+                                className="h-8 w-8 p-0"
+                                disabled={isPdfLoading}
+                                title="Download Invoice"
+                              >
+                                <FileDown size={16} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditBooking(searchBooking.id)}
+                                className="h-8 w-8 p-0"
+                                title="Edit Booking"
+                              >
+                                <Edit size={16} />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Booking Details */}
           {booking && (
@@ -248,6 +457,46 @@ const Search = () => {
                       <FileDown size={16} />
                       Download
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditBooking(booking.id)}
+                      className="gap-1"
+                    >
+                      <Edit size={16} />
+                      Edit
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          disabled={deletingId === booking.id}
+                        >
+                          <Trash2 size={16} />
+                          Delete
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Booking</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete booking <strong>{booking.id}</strong>? 
+                            This action cannot be undone. The booking ID will be made available for reuse.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteBooking(booking.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            {deletingId === booking.id ? "Deleting..." : "Delete"}
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </CardHeader>
@@ -449,47 +698,50 @@ const Search = () => {
                         </td>
                       </tr>
                     ) : (
-                      recentBookings.map((booking) => (
-                        <tr key={booking.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-2 font-medium">{booking.id}</td>
-                          <td className="py-3 px-2">{booking.bookingDate}</td>
-                          <td className="py-3 px-2 hidden md:table-cell">{booking.consignorName}</td>
-                          <td className="py-3 px-2">{booking.deliveryDestination}</td>
+                      recentBookings.map((recentBooking) => (
+                        <tr key={recentBooking.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-2 font-medium">{recentBooking.id}</td>
+                          <td className="py-3 px-2">{recentBooking.bookingDate}</td>
+                          <td className="py-3 px-2 hidden md:table-cell">{recentBooking.consignorName}</td>
+                          <td className="py-3 px-2">{recentBooking.deliveryDestination}</td>
                           <td className="py-3 px-2 hidden md:table-cell">
                             <span
                               className={`px-2 py-1 rounded-full text-xs ${
-                                booking.bookingType === "PAID"
+                                recentBooking.bookingType === "PAID"
                                   ? "bg-green-100 text-green-800"
                                   : "bg-blue-100 text-blue-800"
                               }`}
                             >
-                              {booking.bookingType}
+                              {recentBooking.bookingType}
                             </span>
                           </td>
                           <td className="py-3 px-2">
-                            <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(booking.status)}`}>
-                              {booking.status}
+                            <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(recentBooking.status)}`}>
+                              {recentBooking.status}
                             </span>
                           </td>
                           <td className="py-3 px-2 text-center">
-                            <div className="flex justify-center gap-2">
+                            <div className="flex justify-center gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                  setBooking(booking)
-                                  document.getElementById("search-tab")?.click()
+                                  setBooking(recentBooking)
+                                  setSearchResults([recentBooking])
+                                  document.querySelector('[data-value="search"]')?.click()
                                 }}
                                 className="h-8 w-8 p-0"
+                                title="View Details"
                               >
                                 <SearchIcon size={16} />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => handleViewInvoice(booking)}
+                                onClick={() => handleViewInvoice(recentBooking)}
                                 className="h-8 w-8 p-0"
                                 disabled={isPdfLoading}
+                                title="View Invoice"
                               >
                                 <Eye size={16} />
                               </Button>
@@ -499,9 +751,50 @@ const Search = () => {
                                 onClick={() => handleDownloadInvoice(booking)}
                                 className="h-8 w-8 p-0"
                                 disabled={isPdfLoading}
+                                title="Download Invoice"
                               >
                                 <FileDown size={16} />
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditBooking(booking.id)}
+                                className="h-8 w-8 p-0"
+                                title="Edit Booking"
+                              >
+                                <Edit size={16} />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    disabled={deletingId === booking.id}
+                                    title="Delete Booking"
+                                  >
+                                    <Trash2 size={16} />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Booking</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete booking <strong>{booking.id}</strong>? 
+                                      This action cannot be undone. The booking ID will be made available for reuse.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDeleteBooking(booking.id)}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      {deletingId === booking.id ? "Deleting..." : "Delete"}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </div>
                           </td>
                         </tr>
@@ -519,4 +812,3 @@ const Search = () => {
 }
 
 export default Search
-  

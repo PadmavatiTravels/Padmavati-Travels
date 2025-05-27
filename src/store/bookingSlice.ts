@@ -2,6 +2,7 @@ import { createSlice, type PayloadAction, createAsyncThunk } from "@reduxjs/tool
 import type { Booking } from "@/models/booking"
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, getFirestore } from "firebase/firestore"
 import { getAuth } from "firebase/auth"
+import { deleteBooking } from "../services/bookingService"
 
 interface BookingState {
   currentBooking: Partial<Booking> | null
@@ -10,6 +11,8 @@ interface BookingState {
   recentBookings: Booking[]
   loadingDropdowns: boolean
   errorDropdowns: string | null
+  loadingDelete: boolean
+  errorDelete: string | null
 }
 
 const initialState: BookingState = {
@@ -19,6 +22,8 @@ const initialState: BookingState = {
   recentBookings: [],
   loadingDropdowns: false,
   errorDropdowns: null,
+  loadingDelete: false,
+  errorDelete: null,
 }
 
 // Async thunk to fetch dropdown options from Firestore
@@ -166,6 +171,22 @@ export const addArticleTypeAsync = createAsyncThunk(
   },
 )
 
+// Async thunk to delete a booking
+export const deleteBookingAsync = createAsyncThunk(
+  "booking/deleteBooking",
+  async (bookingId: string, { rejectWithValue }) => {
+    try {
+      await deleteBooking(bookingId)
+      return bookingId
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        return rejectWithValue(error.message)
+      }
+      return rejectWithValue("Unknown error")
+    }
+  },
+)
+
 const bookingSlice = createSlice({
   name: "booking",
   initialState,
@@ -189,13 +210,11 @@ const bookingSlice = createSlice({
     addRecentBooking: (state, action: PayloadAction<Booking>) => {
       state.recentBookings = [action.payload, ...state.recentBookings].slice(0, 10)
     },
-    // Add this new reducer
     addDestination: (state, action: PayloadAction<string>) => {
       if (!state.destinations.includes(action.payload)) {
         state.destinations.push(action.payload)
       }
     },
-    // Add this new reducer
     addArticleType: (state, action: PayloadAction<string>) => {
       if (!state.articleTypes.includes(action.payload)) {
         state.articleTypes.push(action.payload)
@@ -226,6 +245,19 @@ const bookingSlice = createSlice({
         if (!state.articleTypes.includes(action.payload)) {
           state.articleTypes.push(action.payload)
         }
+      })
+      .addCase(deleteBookingAsync.pending, (state) => {
+        state.loadingDelete = true
+        state.errorDelete = null
+      })
+      .addCase(deleteBookingAsync.fulfilled, (state, action) => {
+        state.loadingDelete = false
+        // Remove deleted booking from recentBookings
+        state.recentBookings = state.recentBookings.filter((b) => b.id !== action.payload)
+      })
+      .addCase(deleteBookingAsync.rejected, (state, action) => {
+        state.loadingDelete = false
+        state.errorDelete = action.payload as string
       })
   },
 })

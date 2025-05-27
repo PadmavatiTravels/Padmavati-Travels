@@ -2,9 +2,21 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Package, Truck, FileText, BarChart2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogTrigger 
+} from "@/components/ui/alert-dialog"
+import { Package, Truck, FileText, BarChart2, Trash2, Edit, Eye } from "lucide-react"
 import { useNavigate } from "react-router-dom"
-import { getRecentBookings } from "@/services/bookingService"
+import { getRecentBookings, deleteBooking } from "@/services/bookingService"
 import type { Booking } from "@/models/booking"
 import { useToast } from "@/hooks/use-toast"
 
@@ -14,6 +26,7 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [recentBookings, setRecentBookings] = useState<Booking[]>([])
   const [pendingDeliveries, setPendingDeliveries] = useState<Booking[]>([])
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [stats, setStats] = useState({
     todayBookings: 0,
     pendingDispatch: 0,
@@ -74,6 +87,38 @@ const Dashboard = () => {
     }
   }
 
+  const handleDeleteBooking = async (bookingId: string) => {
+    setDeletingId(bookingId)
+    try {
+      await deleteBooking(bookingId)
+      
+      toast({
+        title: "Success",
+        description: `Booking ${bookingId} has been deleted successfully.`,
+      })
+      
+      // Refresh the dashboard data
+      await loadDashboardData()
+    } catch (error) {
+      console.error("Error deleting booking:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete booking. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleViewBooking = (bookingId: string) => {
+    navigate(`/booking/view/${bookingId}`)
+  }
+
+  const handleEditBooking = (bookingId: string) => {
+    navigate(`/booking/edit/${bookingId}`)
+  }
+
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "Delivered":
@@ -121,6 +166,79 @@ const Dashboard = () => {
       onClick: () => navigate("/reports"),
     },
   ]
+
+  const BookingRow = ({ booking, showActions = true }: { booking: Booking; showActions?: boolean }) => (
+    <tr key={booking.id} className="border-b hover:bg-gray-50">
+      <td className="py-3 px-2">{booking.id}</td>
+      <td className="py-3 px-2">{booking.consignorName}</td>
+      <td className="py-3 px-2">{booking.deliveryDestination}</td>
+      <td className="py-3 px-2">
+        <span
+          className={`px-2 py-1 rounded-full text-xs ${booking.bookingType === "PAID" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}
+        >
+          {booking.bookingType}
+        </span>
+      </td>
+      <td className="py-3 px-2">
+        <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(booking.status)}`}>
+          {booking.status}
+        </span>
+      </td>
+      <td className="py-3 px-2">{booking.bookingDate}</td>
+      {showActions && (
+        <td className="py-3 px-2">
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleViewBooking(booking.id)}
+              className="h-8 w-8 p-0"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleEditBooking(booking.id)}
+              className="h-8 w-8 p-0"
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                  disabled={deletingId === booking.id}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Booking</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete booking <strong>{booking.id}</strong>? 
+                    This action cannot be undone. The booking ID will be made available for reuse.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => handleDeleteBooking(booking.id)}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {deletingId === booking.id ? "Deleting..." : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </td>
+      )}
+    </tr>
+  )
 
   return (
     <div className="space-y-6">
@@ -175,28 +293,12 @@ const Dashboard = () => {
                         <th className="py-3 px-2 text-left">Type</th>
                         <th className="py-3 px-2 text-left">Status</th>
                         <th className="py-3 px-2 text-left">Date</th>
+                        <th className="py-3 px-2 text-left">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {recentBookings.map((booking) => (
-                        <tr key={booking.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-2">{booking.id}</td>
-                          <td className="py-3 px-2">{booking.consignorName}</td>
-                          <td className="py-3 px-2">{booking.deliveryDestination}</td>
-                          <td className="py-3 px-2">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs ${booking.bookingType === "PAID" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}
-                            >
-                              {booking.bookingType}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2">
-                            <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(booking.status)}`}>
-                              {booking.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2">{booking.bookingDate}</td>
-                        </tr>
+                        <BookingRow key={booking.id} booking={booking} />
                       ))}
                     </tbody>
                   </table>
@@ -232,28 +334,12 @@ const Dashboard = () => {
                         <th className="py-3 px-2 text-left">Type</th>
                         <th className="py-3 px-2 text-left">Status</th>
                         <th className="py-3 px-2 text-left">Date</th>
+                        <th className="py-3 px-2 text-left">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {pendingDeliveries.map((delivery) => (
-                        <tr key={delivery.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-2">{delivery.id}</td>
-                          <td className="py-3 px-2">{delivery.consignorName}</td>
-                          <td className="py-3 px-2">{delivery.deliveryDestination}</td>
-                          <td className="py-3 px-2">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs ${delivery.bookingType === "PAID" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}`}
-                            >
-                              {delivery.bookingType}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2">
-                            <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(delivery.status)}`}>
-                              {delivery.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2">{delivery.bookingDate}</td>
-                        </tr>
+                        <BookingRow key={delivery.id} booking={delivery} />
                       ))}
                     </tbody>
                   </table>

@@ -12,6 +12,7 @@ import {
   orderBy,
   limit,
   arrayUnion,
+  deleteDoc,
 } from "firebase/firestore"
 
 // Function to calculate weight amount based on weight and rate
@@ -34,56 +35,73 @@ export const calculateTotalArticleAmount = (articles: Article[]): number => {
   }, 0)
 }
 
+// Enhanced generateBookingId function that handles reusable IDs
 export const generateBookingId = async (): Promise<string> => {
   try {
-    // Try two different queries to ensure we get the latest booking
+    // First check for reusable IDs
+    const reusableRef = doc(db, "reusableBookingIds", "ids")
+    const reusableDoc = await getDoc(reusableRef)
 
-    // First, try querying by the 'id' field in the document
+    if (reusableDoc.exists()) {
+      const reusableIds: string[] = reusableDoc.data().ids || []
+      if (reusableIds.length > 0) {
+        // Sort to get the smallest reusable ID
+        reusableIds.sort((a, b) => {
+          const numA = Number.parseInt(a.replace(/^PT[_-]?/, ""), 10)
+          const numB = Number.parseInt(b.replace(/^PT[_-]?/, ""), 10)
+          return numA - numB
+        })
+        const reusedId = reusableIds[0]
+
+        // Remove reusedId from reusable IDs in Firestore
+        await updateDoc(reusableRef, {
+          ids: reusableIds.filter((id) => id !== reusedId),
+        })
+
+        return reusedId
+      }
+    }
+
+    // If no reusable IDs, proceed with original logic
     const bookingsRef = collection(db, "bookings")
     const q1 = query(bookingsRef, orderBy("id", "desc"), limit(1))
     const querySnapshot1 = await getDocs(q1)
 
-    let latestBooking = null
     let latestId = ""
 
     if (!querySnapshot1.empty) {
-      latestBooking = querySnapshot1.docs[0].data()
+      const latestBooking = querySnapshot1.docs[0].data()
       latestId = latestBooking.id as string
       console.log("Found booking by 'id' field:", latestId)
     } else {
       console.log("No bookings found by 'id' field, checking document IDs")
 
-      // If no results, try getting all documents and sort them manually
       const allBookingsSnapshot = await getDocs(collection(db, "bookings"))
 
       if (!allBookingsSnapshot.empty) {
-        // Convert to array and sort by document ID
         const bookings = allBookingsSnapshot.docs.map((doc) => ({
           docId: doc.id,
           ...doc.data(),
         }))
 
-        // Filter for IDs that start with PT and sort them
         const ptBookings = bookings
           .filter((b) => b.docId.startsWith("PT"))
           .sort((a, b) => {
             const numA = Number.parseInt(a.docId.substring(2), 10)
             const numB = Number.parseInt(b.docId.substring(2), 10)
-            return numB - numA // Descending order
+            return numB - numA
           })
 
         if (ptBookings.length > 0) {
-          latestBooking = ptBookings[0]
           latestId = ptBookings[0].docId
           console.log("Found booking by document ID:", latestId)
         }
       }
     }
 
-    let nextNumber = 100 // Start with PT100 if no bookings exist
+    let nextNumber = 100
 
     if (latestId && latestId.startsWith("PT")) {
-      // Fix: Remove the slash check to handle both formats
       const numberPart = latestId.replace(/^PT[_-]?/, "")
       const currentNumber = Number.parseInt(numberPart, 10)
 
@@ -95,11 +113,10 @@ export const generateBookingId = async (): Promise<string> => {
       console.log("No valid PT bookings found, starting with PT100")
     }
 
-    // Fix: Use PT followed by number without slash
     return `PT${nextNumber}`
   } catch (error) {
     console.error("Error generating booking ID:", error)
-    return `PT100` // Default to PT100 in case of error
+    return `PT100`
   }
 }
 
@@ -110,9 +127,9 @@ export const createBooking = async (bookingData: Partial<Booking>): Promise<stri
 
     // Create a complete booking object with all required fields
     const newBooking: Booking = {
-      id: bookingId, // This is important - the ID field in the document should match the document ID
+      id: bookingId,
       bookingType: bookingData.bookingType || BookingType.PAID,
-      invoiceType: bookingData.invoiceType || "", // Include the invoice type
+      invoiceType: bookingData.invoiceType || "",
       bookingDate: bookingData.bookingDate || new Date().toISOString().split("T")[0],
       deliveryDestination: bookingData.deliveryDestination || "",
 
@@ -126,7 +143,7 @@ export const createBooking = async (bookingData: Partial<Booking>): Promise<stri
       consigneeCompanyName: bookingData.consigneeCompanyName || "",
       consigneeMobile: bookingData.consigneeMobile || "",
       consigneeAddress: bookingData.consigneeAddress || "",
-      deliveryContact: bookingData.deliveryContact || "", // Ensure delivery contact is included
+      deliveryContact: bookingData.deliveryContact || "",
 
       articles: bookingData.articles || [],
       totalArticles: bookingData.totalArticles || 0,
@@ -155,6 +172,31 @@ export const createBooking = async (bookingData: Partial<Booking>): Promise<stri
     return bookingId
   } catch (error) {
     console.error("Error creating booking:", error)
+    throw error
+  }
+}
+
+// Function to delete a booking by ID
+export const deleteBooking = async (bookingId: string): Promise<void> => {
+  try {
+    const bookingRef = doc(db, "bookings", bookingId)
+    await deleteDoc(bookingRef)
+
+    // Add the deleted booking ID to reusable IDs collection
+    const reusableRef = doc(db, "reusableBookingIds", "ids")
+    const reusableDoc = await getDoc(reusableRef)
+
+    if (reusableDoc.exists()) {
+      await updateDoc(reusableRef, {
+        ids: arrayUnion(bookingId),
+      })
+    } else {
+      await setDoc(reusableRef, {
+        ids: [bookingId],
+      })
+    }
+  } catch (error) {
+    console.error("Error deleting booking:", error)
     throw error
   }
 }
@@ -220,7 +262,7 @@ export const savePreviousValues = async (values: { [fieldName: string]: string[]
 // Function to get bookings by type
 export const getBookingsByType = async (bookingType: BookingType) => {
   try {
-    const bookingDocs = await getDocs(query(collection(db, "bookings"), where("type", "==", bookingType)))
+    const bookingDocs = await getDocs(query(collection(db, "bookings"), where("bookingType", "==", bookingType)))
     return bookingDocs.docs.map((doc) => ({ ...doc.data(), id: doc.id }))
   } catch (error) {
     console.error("Error getting bookings:", error)
@@ -237,7 +279,7 @@ export const getBookingById = async (bookingId: string) => {
     if (docSnap.exists()) {
       return { id: docSnap.id, ...docSnap.data() }
     } else {
-      return null // Changed from throwing an error to returning null for better error handling
+      return null
     }
   } catch (error) {
     console.error("Error getting booking:", error)
@@ -258,7 +300,7 @@ export const getRecentBookings = async (limitCount = 10) => {
   }
 }
 
-// Add any other missing exports here
+// Function to update booking status
 export const updateBookingStatus = async (bookingId: string, status: string, dateField?: string) => {
   try {
     const docRef = doc(db, "bookings", bookingId)

@@ -18,6 +18,7 @@ import {
   getPreviousValues,
   savePreviousValues,
   getBookingById,
+  deleteBooking,
 } from "../services/bookingService"
 import { saveConsigneeDetails, getConsigneeByDestination } from "../services/consigneeService"
 import { saveDestinationAddress, fetchDestinationAddress } from "../services/destinationService"
@@ -33,6 +34,7 @@ import { useAuth } from "../contexts/AuthContext"
 import { getAuth } from "firebase/auth"
 import { collection, query, where, getDocs } from "firebase/firestore"
 import { db } from "../lib/firebase"
+
 
 // Define field history type for storing previous entries
 type FieldHistory = {
@@ -95,6 +97,8 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
   const customDestinationRef = useRef<HTMLInputElement>(null)
   const customArticleTypeRef = useRef<HTMLInputElement>(null)
   const [bookingId, setBookingId] = useState("PT100")
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // State for field history and suggestions
   const [fieldHistory, setFieldHistory] = useState<FieldHistory>({})
@@ -479,6 +483,44 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
 
   const { articleAmount, totalAmount } = calculateTotals()
 
+  // Add this function to handle deletion
+  const handleDeleteBooking = async () => {
+    if (!bookingId || bookingId === "PT100") {
+      toast({
+        title: "Error",
+        description: "No booking to delete",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      await deleteBooking(bookingId)
+      toast({
+        title: "Success",
+        description: `Booking ${bookingId} deleted successfully. This ID will be reused for the next booking.`,
+      })
+      
+      // Reset form or navigate away
+      if (onBookingCreated) {
+        onBookingCreated("deleted")
+      } else {
+        navigate("/dashboard")
+      }
+    } catch (error) {
+      console.error("Error deleting booking:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete booking",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -722,6 +764,38 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
               <SelectItem value="Full Load">Full Load</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div>
+          {formData.id && (
+            <button
+              type="button"
+              className="text-red-600 hover:text-red-800 font-semibold"
+              onClick={async () => {
+                if (window.confirm("Are you sure you want to delete this booking?")) {
+                  try {
+                    setIsSubmitting(true)
+                    await dispatch(deleteBookingAsync(formData.id)).unwrap()
+                    toast({
+                      title: "Booking Deleted",
+                      description: `Booking ${formData.id} has been deleted.`,
+                      variant: "default",
+                    })
+                    navigate("/")
+                  } catch (error) {
+                    toast({
+                      title: "Error",
+                      description: "Failed to delete booking. Please try again.",
+                      variant: "destructive",
+                    })
+                  } finally {
+                    setIsSubmitting(false)
+                  }
+                }
+              }}
+            >
+              Delete Booking
+            </button>
+          )}
         </div>
       </div>
 
@@ -1117,11 +1191,51 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
           <Button type="button" variant="outline" onClick={() => navigate("/")}>
             Cancel
           </Button>
-          <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={isSubmitting || isDeleting || !bookingId || bookingId === "PT100"}
+            className="flex items-center gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete Booking
+          </Button>
+          <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={isSubmitting || isDeleting}>
             {isSubmitting ? "Creating..." : "Create Booking"}
           </Button>
         </div>
       </form>
+      
+      {/* Confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Confirm Deletion</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete booking {bookingId}? This action cannot be undone, but the booking ID will be reused for future bookings.
+            </p>
+            <div className="flex gap-4 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDeleteBooking}
+                disabled={isDeleting}
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
