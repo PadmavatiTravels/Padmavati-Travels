@@ -387,36 +387,66 @@ const Search = () => {
                             </span>
                           </td>
                           <td className="py-3 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleSelectBooking(searchBooking)}
-                                className="h-8 w-8 p-0"
-                                title="View Details"
-                              >
-                                <Eye size={16} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDownloadInvoice(searchBooking)}
-                                className="h-8 w-8 p-0"
-                                disabled={isPdfLoading}
-                                title="Download Invoice"
-                              >
-                                <FileDown size={16} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditBooking(searchBooking.id)}
-                                className="h-8 w-8 p-0"
-                                title="Edit Booking"
-                              >
-                                <Edit size={16} />
-                              </Button>
-                            </div>
+                          <div className="flex justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSelectBooking(searchBooking)}
+                              className="h-8 w-8 p-0"
+                              title="View Details"
+                            >
+                              <Eye size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownloadInvoice(searchBooking)}
+                              className="h-8 w-8 p-0"
+                              disabled={isPdfLoading}
+                              title="Download Invoice"
+                            >
+                              <FileDown size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditBooking(searchBooking.id)}
+                              className="h-8 w-8 p-0"
+                              title="Edit Booking"
+                            >
+                              <Edit size={16} />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                  disabled={deletingId === searchBooking.id}
+                                  title="Delete Booking"
+                                >
+                                  <Trash2 size={16} />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Booking</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete booking <strong>{searchBooking.id}</strong>? This action cannot be undone. The booking ID will be made available for reuse.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteBooking(searchBooking.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    {deletingId === searchBooking.id ? "Deleting..." : "Delete"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                           </td>
                         </tr>
                       ))}
@@ -691,115 +721,95 @@ const Search = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {recentBookings.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-4 text-center text-gray-500">
-                          No recent bookings found
+                    {recentBookings.map((recentBooking) => (
+                      <tr 
+                        key={recentBooking.id} 
+                        className="border-b hover:bg-gray-50 cursor-pointer"
+                      >
+                        <td className="py-3 px-2 font-medium">{recentBooking.id}</td>
+                        <td className="py-3 px-2">{recentBooking.bookingDate}</td>
+                        <td className="py-3 px-2 hidden md:table-cell">{recentBooking.consignorName}</td>
+                        <td className="py-3 px-2">{recentBooking.deliveryDestination}</td>
+                        <td className="py-3 px-2 hidden md:table-cell">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs ${
+                              recentBooking.bookingType === "PAID"
+                                ? "bg-green-100 text-green-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {recentBooking.bookingType}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2">
+                          <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(recentBooking.status)}`}>
+                            {recentBooking.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <div className="flex justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSelectBooking(recentBooking)}
+                              className="h-8 w-8 p-0"
+                              title="View Details"
+                            >
+                              <Eye size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDownloadInvoice(recentBooking)}
+                              className="h-8 w-8 p-0"
+                              disabled={isPdfLoading}
+                              title="Download Invoice"
+                            >
+                              <FileDown size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditBooking(recentBooking.id)}
+                              className="h-8 w-8 p-0"
+                              title="Edit Booking"
+                            >
+                              <Edit size={16} />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                  disabled={deletingId === recentBooking.id}
+                                  title="Delete Booking"
+                                >
+                                  <Trash2 size={16} />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Booking</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete booking <strong>{recentBooking.id}</strong>? This action cannot be undone. The booking ID will be made available for reuse.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteBooking(recentBooking.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    {deletingId === recentBooking.id ? "Deleting..." : "Delete"}
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
                         </td>
                       </tr>
-                    ) : (
-                      recentBookings.map((recentBooking) => (
-                        <tr key={recentBooking.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-2 font-medium">{recentBooking.id}</td>
-                          <td className="py-3 px-2">{recentBooking.bookingDate}</td>
-                          <td className="py-3 px-2 hidden md:table-cell">{recentBooking.consignorName}</td>
-                          <td className="py-3 px-2">{recentBooking.deliveryDestination}</td>
-                          <td className="py-3 px-2 hidden md:table-cell">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs ${
-                                recentBooking.bookingType === "PAID"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-blue-100 text-blue-800"
-                              }`}
-                            >
-                              {recentBooking.bookingType}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2">
-                            <span className={`px-2 py-1 rounded-full text-xs ${getStatusBadgeClass(recentBooking.status)}`}>
-                              {recentBooking.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-2 text-center">
-                            <div className="flex justify-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  setBooking(recentBooking)
-                                  setSearchResults([recentBooking])
-                                  document.querySelector('[data-value="search"]')?.click()
-                                }}
-                                className="h-8 w-8 p-0"
-                                title="View Details"
-                              >
-                                <SearchIcon size={16} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleViewInvoice(recentBooking)}
-                                className="h-8 w-8 p-0"
-                                disabled={isPdfLoading}
-                                title="View Invoice"
-                              >
-                                <Eye size={16} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDownloadInvoice(booking)}
-                                className="h-8 w-8 p-0"
-                                disabled={isPdfLoading}
-                                title="Download Invoice"
-                              >
-                                <FileDown size={16} />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditBooking(booking.id)}
-                                className="h-8 w-8 p-0"
-                                title="Edit Booking"
-                              >
-                                <Edit size={16} />
-                              </Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                    disabled={deletingId === booking.id}
-                                    title="Delete Booking"
-                                  >
-                                    <Trash2 size={16} />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Booking</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Are you sure you want to delete booking <strong>{booking.id}</strong>? 
-                                      This action cannot be undone. The booking ID will be made available for reuse.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteBooking(booking.id)}
-                                      className="bg-red-600 hover:bg-red-700"
-                                    >
-                                      {deletingId === booking.id ? "Deleting..." : "Delete"}
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>

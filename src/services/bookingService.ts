@@ -383,16 +383,18 @@ export const searchBookings = async (searchType: string, searchTerm: string) => 
         index === self.findIndex((b) => b.id === booking.id)
       )
 
-      return uniqueBookings
+      return uniqueBookings.filter(b => b && b.id)
     } else {
       // Default fallback: search by consignorName
       q = query(bookingsRef, where("consignorName", "==", searchTerm))
     }
 
-    if (q) {
-      const querySnapshot = await getDocs(q)
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-    }
+      if (q) {
+        const querySnapshot = await getDocs(q)
+        return querySnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(b => b && b.id)
+      }
 
     return []
   } catch (error) {
