@@ -354,3 +354,49 @@ export const saveDestinationAddress = async (
     return false
   }
 }
+
+// Function to search bookings by a field and term
+export const searchBookings = async (searchType: string, searchTerm: string) => {
+  try {
+    const bookingsRef = collection(db, "bookings")
+    let q
+
+    if (searchType === "consignorName") {
+      q = query(bookingsRef, where("consignorName", "==", searchTerm))
+    } else if (searchType === "consigneeName") {
+      q = query(bookingsRef, where("consigneeName", "==", searchTerm))
+    } else if (searchType === "deliveryLocation") {
+      q = query(bookingsRef, where("deliveryDestination", "==", searchTerm))
+    } else if (searchType === "mobile") {
+      // Search by consignorMobile or consigneeMobile
+      const q1 = query(bookingsRef, where("consignorMobile", "==", searchTerm))
+      const q2 = query(bookingsRef, where("consigneeMobile", "==", searchTerm))
+
+      const [result1, result2] = await Promise.all([getDocs(q1), getDocs(q2)])
+
+      const bookings1 = result1.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      const bookings2 = result2.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+
+      // Combine and remove duplicates
+      const combined = [...bookings1, ...bookings2]
+      const uniqueBookings = combined.filter((booking, index, self) =>
+        index === self.findIndex((b) => b.id === booking.id)
+      )
+
+      return uniqueBookings
+    } else {
+      // Default fallback: search by consignorName
+      q = query(bookingsRef, where("consignorName", "==", searchTerm))
+    }
+
+    if (q) {
+      const querySnapshot = await getDocs(q)
+      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    }
+
+    return []
+  } catch (error) {
+    console.error("Error searching bookings:", error)
+    return []
+  }
+}
