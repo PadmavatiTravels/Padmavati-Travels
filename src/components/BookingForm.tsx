@@ -14,11 +14,13 @@ import type { Article } from "../models/booking"
 import { BookingType } from "../models/booking"
 import {
   createBooking,
+  createBookingWithSpecificId,
   calculateTotalArticleAmount,
   getPreviousValues,
   savePreviousValues,
   getBookingById,
   deleteBooking,
+  getUnusedLRNumbers,
 } from "../services/bookingService"
 import { saveConsigneeDetails, getConsigneeByDestination } from "../services/consigneeService"
 import { saveDestinationAddress, fetchDestinationAddress } from "../services/destinationService"
@@ -96,9 +98,15 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
   const [isTypingArticleType, setIsTypingArticleType] = useState(false)
   const customDestinationRef = useRef<HTMLInputElement>(null)
   const customArticleTypeRef = useRef<HTMLInputElement>(null)
+  const [selectedLR, setSelectedLR] = useState("New LR")
   const [bookingId, setBookingId] = useState("PT100")
+  const [reusableLRs, setReusableLRs] = useState<string[]>([])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const handleLRChange = (value: string) => {
+    setSelectedLR(value)
+  }
 
   // State for field history and suggestions
   const [fieldHistory, setFieldHistory] = useState<FieldHistory>({})
@@ -123,7 +131,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     saidToContain: "",
     remarks: "",
     godown: "",
-    status: "Booked",
+    status: "Booked" as "Booked" | "Dispatched" | "In Transit" | "Received" | "Delivered" | "Not Received" | "Not Dispatched",
   })
   // Define ConsigneeDetails type for Firestore data
   type ConsigneeDetails = {
@@ -212,6 +220,23 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
     }
 
     loadFieldHistory()
+  }, [])
+
+  // Add useEffect to load unused LR numbers on component mount
+  useEffect(() => {
+    const loadUnusedLRs = async () => {
+      try {
+        const unusedLRs = await getUnusedLRNumbers()
+        setReusableLRs(unusedLRs)
+        
+        // Remove auto-selection of first unused LR to respect user's choice of "New LR"
+        // User must explicitly select a reusable LR if desired
+      } catch (error) {
+        console.error("Error loading unused LR numbers:", error)
+      }
+    }
+
+    loadUnusedLRs()
   }, [])
 
   // Update suggestions when a field is being typed in
@@ -637,7 +662,8 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
 
       // Save article values too
       for (const article of articles) {
-        if (article.articleName) saveToFieldHistory("articleName", article.articleName)
+        // articleName does not exist on Article type, remove or replace with correct property if needed
+        // if (article.articleName) saveToFieldHistory("articleName", article.articleName)
         if (article.saidToContain) saveToFieldHistory("saidToContain", article.saidToContain)
       }
 
@@ -654,6 +680,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         charges,
         status: formData.status,
         bookedBy: effectiveUser?.email || "ADMIN",
+        id: selectedLR !== "New LR" ? selectedLR : undefined, // Use selected LR if not "New LR"
       }
 
       toast({
@@ -662,16 +689,19 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
         variant: "default",
       })
 
-      const bookingId = await createBooking(bookingData)
+      // Create booking with selected or new LR
+      const newBookingId = selectedLR === "New LR" 
+        ? await createBooking(bookingData)
+        : await createBookingWithSpecificId(selectedLR, bookingData)
 
       toast({
         title: "Success",
-        description: `Booking created successfully with LR number: ${bookingId}`,
+        description: `Booking created successfully with LR number: ${newBookingId}`,
         variant: "default",
       })
 
       if (onBookingCreated) {
-        onBookingCreated(bookingId)
+        onBookingCreated(newBookingId)
       }
 
       if (isNewDestination) {
@@ -693,7 +723,7 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
 
       // Fetch full booking object before generating invoice PDF
       try {
-        const fullBooking = await getBookingById(bookingId)
+        const fullBooking = await getBookingById(newBookingId)
         if (fullBooking) {
           await downloadInvoicePDF(fullBooking)
           toast({
@@ -716,6 +746,10 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
           variant: "warning",
         })
       }
+
+      // Refresh unused LRs after successful booking creation
+      const unusedLRs = await getUnusedLRNumbers()
+      setReusableLRs(unusedLRs)
 
       // Navigate to dashboard
       navigate("/")
@@ -765,19 +799,43 @@ const BookingForm: React.FC<{ formType: BookingType; onBookingCreated?: (id: str
             </SelectContent>
           </Select>
         </div>
-        <div>
-          {formData.id && (
+        <div className="flex items-center gap-2">
+          <Select
+            value={selectedLR}
+            onValueChange={(value) => {
+              handleLRChange(value)
+              if (value === "New LR") {
+                setBookingId("PT100") // Placeholder, actual new ID generated on submission
+              } else {
+                setBookingId(value)
+              }
+            }}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {reusableLRs.length > 0 &&
+                reusableLRs.map((lr) => (
+                  <SelectItem key={lr} value={lr}>
+                    {lr}
+                  </SelectItem>
+                ))}
+              <SelectItem value="New LR">New LR</SelectItem>
+            </SelectContent>
+          </Select>
+          {bookingId && bookingId !== "PT100" && (
             <button
               type="button"
               className="text-red-600 hover:text-red-800 font-semibold"
               onClick={async () => {
-                if (window.confirm("Are you sure you want to delete this booking?")) {
+                if (window.confirm(`Are you sure you want to delete booking ${bookingId}?`)) {
                   try {
                     setIsSubmitting(true)
-                    await dispatch(deleteBookingAsync(formData.id)).unwrap()
+                    await dispatch(deleteBookingAsync(bookingId)).unwrap()
                     toast({
                       title: "Booking Deleted",
-                      description: `Booking ${formData.id} has been deleted.`,
+                      description: `Booking ${bookingId} has been deleted.`,
                       variant: "default",
                     })
                     navigate("/")

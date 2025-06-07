@@ -38,31 +38,7 @@ export const calculateTotalArticleAmount = (articles: Article[]): number => {
 // Enhanced generateBookingId function that handles reusable IDs
 export const generateBookingId = async (): Promise<string> => {
   try {
-    // First check for reusable IDs
-    const reusableRef = doc(db, "reusableBookingIds", "ids")
-    const reusableDoc = await getDoc(reusableRef)
-
-    if (reusableDoc.exists()) {
-      const reusableIds: string[] = reusableDoc.data().ids || []
-      if (reusableIds.length > 0) {
-        // Sort to get the smallest reusable ID
-        reusableIds.sort((a, b) => {
-          const numA = Number.parseInt(a.replace(/^PT[_-]?/, ""), 10)
-          const numB = Number.parseInt(b.replace(/^PT[_-]?/, ""), 10)
-          return numA - numB
-        })
-        const reusedId = reusableIds[0]
-
-        // Remove reusedId from reusable IDs in Firestore
-        await updateDoc(reusableRef, {
-          ids: reusableIds.filter((id) => id !== reusedId),
-        })
-
-        return reusedId
-      }
-    }
-
-    // If no reusable IDs, proceed with original logic
+    // Get the latest booking ID to determine the next number
     const bookingsRef = collection(db, "bookings")
     const q1 = query(bookingsRef, orderBy("id", "desc"), limit(1))
     const querySnapshot1 = await getDocs(q1)
@@ -117,6 +93,22 @@ export const generateBookingId = async (): Promise<string> => {
   } catch (error) {
     console.error("Error generating booking ID:", error)
     return `PT100`
+  }
+}
+
+export const fetchReusableBookingIds = async (): Promise<string[]> => {
+  try {
+    const reusableRef = doc(db, "reusableBookingIds", "ids")
+    const reusableDoc = await getDoc(reusableRef)
+
+    if (reusableDoc.exists()) {
+      const reusableIds: string[] = reusableDoc.data().ids || []
+      return reusableIds
+    }
+    return []
+  } catch (error) {
+    console.error("Error fetching reusable booking IDs:", error)
+    return []
   }
 }
 
@@ -400,5 +392,92 @@ export const searchBookings = async (searchType: string, searchTerm: string) => 
   } catch (error) {
     console.error("Error searching bookings:", error)
     return []
+  }
+}
+
+// Function to get unused/reusable LR numbers
+export const getUnusedLRNumbers = async (): Promise<string[]> => {
+  try {
+    const reusableRef = doc(db, "reusableBookingIds", "ids")
+    const reusableDoc = await getDoc(reusableRef)
+
+    if (reusableDoc.exists()) {
+      const reusableIds: string[] = reusableDoc.data().ids || []
+      // Sort the IDs to show them in order
+      return reusableIds.sort((a, b) => {
+        const numA = Number.parseInt(a.replace(/^PT[_-]?/, ""), 10)
+        const numB = Number.parseInt(b.replace(/^PT[_-]?/, ""), 10)
+        return numA - numB
+      })
+    }
+    return []
+  } catch (error) {
+    console.error("Error getting unused LR numbers:", error)
+    return []
+  }
+}
+
+// Function to create booking with a specific LR number (reused ID)
+export const createBookingWithSpecificId = async (bookingId: string, bookingData: Partial<Booking>): Promise<string> => {
+  try {
+    // Remove the ID from reusable IDs since we're using it
+    const reusableRef = doc(db, "reusableBookingIds", "ids")
+    const reusableDoc = await getDoc(reusableRef)
+    
+    if (reusableDoc.exists()) {
+      const reusableIds: string[] = reusableDoc.data().ids || []
+      await updateDoc(reusableRef, {
+        ids: reusableIds.filter((id) => id !== bookingId),
+      })
+    }
+
+    // Create a complete booking object with the specified ID
+    const newBooking: Booking = {
+      id: bookingId,
+      bookingType: bookingData.bookingType || BookingType.PAID,
+      invoiceType: bookingData.invoiceType || "",
+      bookingDate: bookingData.bookingDate || new Date().toISOString().split("T")[0],
+      deliveryDestination: bookingData.deliveryDestination || "",
+
+      // Consignor details
+      consignorName: bookingData.consignorName || "",
+      consignorMobile: bookingData.consignorMobile || "",
+      consignorAddress: bookingData.consignorAddress || "",
+
+      // Consignee details
+      consigneeName: bookingData.consigneeName || "",
+      consigneeCompanyName: bookingData.consigneeCompanyName || "",
+      consigneeMobile: bookingData.consigneeMobile || "",
+      consigneeAddress: bookingData.consigneeAddress || "",
+      deliveryContact: bookingData.deliveryContact || "",
+
+      articles: bookingData.articles || [],
+      totalArticles: bookingData.totalArticles || 0,
+
+      formType: bookingData.formType || "Eway Bill",
+      invoiceNo: "", // Removed invoice number field as requested
+      declaredValue: bookingData.declaredValue || 0,
+      saidToContain: bookingData.saidToContain || "",
+      remarks: bookingData.remarks || "",
+
+      fixAmount: bookingData.fixAmount || 0,
+      articleAmount: bookingData.articleAmount || 0,
+      totalAmount: bookingData.totalAmount || 0,
+
+      status: bookingData.status || "Booked",
+
+      bookedBy: bookingData.bookedBy || "ADMIN",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    // Save to Firestore with the specified ID as the document ID
+    const bookingRef = doc(db, "bookings", bookingId)
+    await setDoc(bookingRef, newBooking)
+
+    return bookingId
+  } catch (error) {
+    console.error("Error creating booking with specific ID:", error)
+    throw error
   }
 }
