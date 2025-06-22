@@ -19,6 +19,7 @@ import { useNavigate } from "react-router-dom"
 import { getRecentBookings, deleteBooking } from "@/services/bookingService"
 import type { Booking } from "@/models/booking"
 import { useToast } from "@/hooks/use-toast"
+import { viewInvoicePDF } from "@/utils/pdfGenerator"
 
 const Dashboard = () => {
   const navigate = useNavigate()
@@ -111,8 +112,8 @@ const Dashboard = () => {
     }
   }
 
-  const handleViewBooking = (bookingId: string) => {
-    navigate(`/booking/view/${bookingId}`)
+  const handleViewBooking = (booking: Booking) => {
+    viewInvoicePDF(booking)
   }
 
   const handleEditBooking = (bookingId: string) => {
@@ -191,7 +192,7 @@ const Dashboard = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleViewBooking(booking.id)}
+              onClick={() => handleViewBooking(booking)}
               className="h-8 w-8 p-0"
             >
               <Eye className="h-4 w-4" />

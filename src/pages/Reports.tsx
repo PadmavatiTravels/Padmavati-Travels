@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, FileText, Download, Filter, FileSpreadsheet, Printer } from "lucide-react"
+import { CalendarIcon, FileText, Download, Filter, FileSpreadsheet, Printer, Eye } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -17,6 +17,8 @@ import { getAuth } from "firebase/auth"
 import { getFirestore, doc, getDoc } from "firebase/firestore"
 import jsPDF from "jspdf"
 import "jspdf-autotable"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { viewInvoicePDF } from "@/utils/pdfGenerator"
 
 const Reports = () => {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date | undefined }>({
@@ -29,6 +31,8 @@ const Reports = () => {
   const [reportData, setReportData] = useState<any[]>([])
   const [isExporting, setIsExporting] = useState(false)
   const [destinations, setDestinations] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<"summary" | "list">("summary")
+  const [detailedBookings, setDetailedBookings] = useState<Booking[]>([])
   const isMobile = useIsMobile()
   const { toast } = useToast()
 
@@ -125,6 +129,7 @@ const Reports = () => {
               ? filteredBookings.filter((booking: Booking) => booking.deliveryDestination === destination)
               : filteredBookings
 
+          setDetailedBookings(destinationFilteredBookings)
           data = destinationFilteredBookings.map((booking: Booking) => ({
             id: booking.id,
             date: booking.bookingDate,
@@ -320,6 +325,7 @@ const Reports = () => {
 
         default:
           data = []
+          setDetailedBookings([])
       }
 
       setReportData(data)
@@ -366,6 +372,10 @@ const Reports = () => {
   }
 
   const filteredData = getFilteredData()
+
+  const handleViewBooking = (booking: Booking) => {
+    viewInvoicePDF(booking)
+  }
 
   // Enhanced PDF export functionality
   const handleExportPDF = async () => {
@@ -813,8 +823,6 @@ const Reports = () => {
                     <Filter className="h-4 w-4 mr-2" />
                     Apply Filters
                   </Button>
-
-                 
                 </div>
               </div>
             </CardContent>
@@ -823,11 +831,23 @@ const Reports = () => {
           {/* Report Content */}
           <Card>
             <CardHeader>
-              <CardTitle>{getReportTitle()}</CardTitle>
-              <CardDescription>
-                {getReportDateRange()}
-                {destination && destination !== "all" ? ` | Destination: ${destination}` : null}
-              </CardDescription>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>{getReportTitle()}</CardTitle>
+                  <CardDescription>
+                    {getReportDateRange()}
+                    {destination && destination !== "all" ? ` | Destination: ${destination}` : null}
+                  </CardDescription>
+                </div>
+                {(reportType === "collection" || reportType === "branchCollection") && (
+                  <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "summary" | "list")}> 
+                    <TabsList>
+                      <TabsTrigger value="summary">Summary</TabsTrigger>
+                      <TabsTrigger value="list">Detailed List</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -840,7 +860,7 @@ const Reports = () => {
                 </div>
               ) : (
                 <div className="space-y-8">
-                  {(reportType === "collection" || reportType === "branchCollection") && (
+                  {(reportType === "collection" || reportType === "branchCollection") && viewMode === "summary" && (
                     <>
                       {/* Source Branch and Date Information */}
                       <div className="flex flex-wrap justify-between items-center text-sm mb-4">
@@ -1007,79 +1027,38 @@ const Reports = () => {
                       </div>
                     </>
                   )}
-
-                  {/* Dispatched and Pending Dispatch Reports */}
-                  {(reportType === "dispatched" || reportType === "pendingDispatch") && (
+                  {(reportType === "collection" || reportType === "branchCollection") && viewMode === "list" && (
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b">
                           <th className="py-3 px-2 text-left">LR No.</th>
-                          <th className="py-3 px-2 text-left">Booking Date</th>
-                          <th className="py-3 px-2 text-left">From</th>
-                          <th className="py-3 px-2 text-left">To</th>
-                          <th className="py-3 px-2 text-left">Status</th>
-                          <th className="py-3 px-2 text-left">Dispatch Date</th>
+                          <th className="py-3 px-2 text-left">Date</th>
+                          <th className="py-3 px-2 text-left">Branch</th>
+                          <th className="py-3 px-2 text-left">Destination</th>
+                          <th className="py-3 px-2 text-left">Type</th>
+                          <th className="py-3 px-2 text-right">Amount</th>
+                          <th className="py-3 px-2 text-center">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredData.map((item) => (
-                          <tr key={item.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-2">{item.id}</td>
-                            <td className="py-3 px-2">{item.date}</td>
-                            <td className="py-3 px-2">{item.from}</td>
-                            <td className="py-3 px-2">{item.to}</td>
-                            <td className="py-3 px-2">
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs 
-                                ${
-                                  item.status === "Dispatched"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-yellow-100 text-yellow-800"
-                                }`}
+                        {detailedBookings.map((booking) => (
+                          <tr key={booking.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-2">{booking.id}</td>
+                            <td className="py-3 px-2">{booking.bookingDate}</td>
+                            <td className="py-3 px-2">BORIVALI</td>
+                            <td className="py-3 px-2">{booking.deliveryDestination}</td>
+                            <td className="py-3 px-2">{booking.bookingType}</td>
+                            <td className="py-3 px-2 text-right">{booking.totalAmount.toFixed(2)}</td>
+                            <td className="py-3 px-2 text-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewBooking(booking)}
+                                className="h-8 w-8 p-0"
                               >
-                                {item.status}
-                              </span>
+                                <Eye className="h-4 w-4" />
+                              </Button>
                             </td>
-                            <td className="py-3 px-2">{item.dispatchDate || "-"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-
-                  {/* Delivered and Pending Delivery Reports */}
-                  {(reportType === "delivered" || reportType === "pendingDelivery") && (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="py-3 px-2 text-left">LR No.</th>
-                          <th className="py-3 px-2 text-left">Booking Date</th>
-                          <th className="py-3 px-2 text-left">From</th>
-                          <th className="py-3 px-2 text-left">To</th>
-                          <th className="py-3 px-2 text-left">Status</th>
-                          <th className="py-3 px-2 text-left">Delivery Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredData.map((item) => (
-                          <tr key={item.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-2">{item.id}</td>
-                            <td className="py-3 px-2">{item.date}</td>
-                            <td className="py-3 px-2">{item.from}</td>
-                            <td className="py-3 px-2">{item.to}</td>
-                            <td className="py-3 px-2">
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs 
-                                ${
-                                  item.status === "Delivered"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-yellow-100 text-yellow-800"
-                                }`}
-                              >
-                                {item.status}
-                              </span>
-                            </td>
-                            <td className="py-3 px-2">{item.deliveryDate || "-"}</td>
                           </tr>
                         ))}
                       </tbody>
