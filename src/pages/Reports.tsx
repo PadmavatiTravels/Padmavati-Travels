@@ -1028,41 +1028,43 @@ const Reports = () => {
                     </>
                   )}
                   {(reportType === "collection" || reportType === "branchCollection") && viewMode === "list" && (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="py-3 px-2 text-left">LR No.</th>
-                          <th className="py-3 px-2 text-left">Date</th>
-                          <th className="py-3 px-2 text-left">Branch</th>
-                          <th className="py-3 px-2 text-left">Destination</th>
-                          <th className="py-3 px-2 text-left">Type</th>
-                          <th className="py-3 px-2 text-right">Amount</th>
-                          <th className="py-3 px-2 text-center">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detailedBookings.map((booking) => (
-                          <tr key={booking.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-2">{booking.id}</td>
-                            <td className="py-3 px-2">{booking.bookingDate}</td>
-                            <td className="py-3 px-2">BORIVALI</td>
-                            <td className="py-3 px-2">{booking.deliveryDestination}</td>
-                            <td className="py-3 px-2">{booking.bookingType}</td>
-                            <td className="py-3 px-2 text-right">{booking.totalAmount.toFixed(2)}</td>
-                            <td className="py-3 px-2 text-center">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleViewBooking(booking)}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </td>
+                    <div className={isMobile ? "overflow-x-auto text-xs p-1" : "overflow-x-auto"}>
+                      <table className="w-full text-sm min-w-[600px]">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="py-3 px-2 text-left">LR No.</th>
+                            <th className="py-3 px-2 text-left">Date</th>
+                            <th className="py-3 px-2 text-left">Branch</th>
+                            <th className="py-3 px-2 text-left">Destination</th>
+                            <th className="py-3 px-2 text-left">Type</th>
+                            <th className="py-3 px-2 text-right">Amount</th>
+                            <th className="py-3 px-2 text-center">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {detailedBookings.map((booking) => (
+                            <tr key={booking.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-2">{booking.id}</td>
+                              <td className="py-3 px-2">{booking.bookingDate}</td>
+                              <td className="py-3 px-2">BORIVALI</td>
+                              <td className="py-3 px-2">{booking.deliveryDestination}</td>
+                              <td className="py-3 px-2">{booking.bookingType}</td>
+                              <td className="py-3 px-2 text-right">{booking.totalAmount.toFixed(2)}</td>
+                              <td className="py-3 px-2 text-center">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleViewBooking(booking)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               )}
