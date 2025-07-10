@@ -16,9 +16,10 @@ import { useToast } from "@/hooks/use-toast"
 import { getAuth } from "firebase/auth"
 import { getFirestore, doc, getDoc } from "firebase/firestore"
 import jsPDF from "jspdf"
-import "jspdf-autotable"
+import autoTable from "jspdf-autotable"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { viewInvoicePDF } from "@/utils/pdfGenerator"
+import { generatePDFReport } from "@/utils/reportGenerator"
 
 const Reports = () => {
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date | undefined }>({
@@ -61,6 +62,7 @@ const Reports = () => {
   const [viewMode, setViewMode] = useState<"summary" | "list">("summary")
   const [detailedBookings, setDetailedBookings] = useState<Booking[]>([])
   const [bookingTypeFilter, setBookingTypeFilter] = useState<"all" | "TO PAY" | "PAID">("all")
+  const [bookingTypeSummary, setBookingTypeSummary] = useState<"all" | "TO PAY" | "PAID">("all")
   const isMobile = useIsMobile()
   const { toast } = useToast()
 
@@ -719,6 +721,288 @@ const Reports = () => {
     ? detailedBookings
     : detailedBookings.filter(b => b.bookingType === bookingTypeFilter)
 
+  // Filtered summary data for display and export
+  const getFilteredSummaryRows = () => {
+    const rows = []
+    if (bookingTypeSummary === "all" || bookingTypeSummary === "TO PAY") {
+      rows.push([
+        "To Pay",
+        bookingStats.toPay.pkgs,
+        bookingStats.toPay.freight,
+        bookingStats.toPay.pickup,
+        bookingStats.toPay.dropCartage,
+        bookingStats.toPay.loading,
+        bookingStats.toPay.lrCharge,
+        bookingStats.toPay.amount.toFixed(2),
+      ])
+    }
+    if (bookingTypeSummary === "all" || bookingTypeSummary === "PAID") {
+      rows.push([
+        "Paid",
+        bookingStats.paid.pkgs,
+        bookingStats.paid.freight,
+        bookingStats.paid.pickup,
+        bookingStats.paid.dropCartage,
+        bookingStats.paid.loading,
+        bookingStats.paid.lrCharge,
+        bookingStats.paid.amount.toFixed(2),
+      ])
+    }
+    if (bookingTypeSummary === "all") {
+      rows.push([
+        "Total",
+        bookingStats.total.pkgs,
+        bookingStats.total.freight,
+        bookingStats.total.pickup,
+        bookingStats.total.dropCartage,
+        bookingStats.total.loading,
+        bookingStats.total.lrCharge,
+        bookingStats.total.amount.toFixed(2),
+      ])
+    }
+    return rows
+  }
+  const getFilteredDeliveryRows = () => {
+    const rows = []
+    if (bookingTypeSummary === "all" || bookingTypeSummary === "TO PAY") {
+      rows.push([
+        "To Pay",
+        deliveryStats.toPay.pkgs,
+        deliveryStats.toPay.freight,
+        deliveryStats.toPay.unloading,
+        deliveryStats.toPay.deliveryDiscount,
+        deliveryStats.toPay.amount.toFixed(2),
+      ])
+    }
+    if (bookingTypeSummary === "all" || bookingTypeSummary === "PAID") {
+      rows.push([
+        "Paid",
+        deliveryStats.paid.pkgs,
+        deliveryStats.paid.freight,
+        deliveryStats.paid.unloading,
+        deliveryStats.paid.deliveryDiscount,
+        deliveryStats.paid.amount.toFixed(2),
+      ])
+    }
+    if (bookingTypeSummary === "all") {
+      rows.push([
+        "Total",
+        deliveryStats.total.pkgs,
+        deliveryStats.total.freight,
+        deliveryStats.total.unloading,
+        deliveryStats.total.deliveryDiscount,
+        deliveryStats.total.amount.toFixed(2),
+      ])
+    }
+    return rows
+  }
+  const getFilteredCitywiseRows = () => {
+    if (bookingTypeSummary === "all") {
+      return citywiseStats.map((city) => [
+        city.destination,
+        city.branch,
+        city.paid.toFixed(2),
+        city.toPay.toFixed(2),
+        city.total.toFixed(2),
+      ])
+    } else if (bookingTypeSummary === "TO PAY") {
+      return citywiseStats.map((city) => [
+        city.destination,
+        city.branch,
+        "-",
+        city.toPay.toFixed(2),
+        city.toPay.toFixed(2),
+      ])
+    } else {
+      return citywiseStats.map((city) => [
+        city.destination,
+        city.branch,
+        city.paid.toFixed(2),
+        "-",
+        city.paid.toFixed(2),
+      ])
+    }
+  }
+
+  // Export summary PDF for current bookingTypeSummary
+  const handleExportSummaryPDF = async () => {
+    try {
+      let data: any[] = []
+      let columns: string[] = [
+        "Category",
+        "No. of pkgs",
+        "Freight",
+        "Pickup",
+        "Drop Cartage",
+        "Loading",
+        "LR Charge",
+        "Amount",
+      ]
+      // Prepare data based on bookingTypeSummary
+      const summaryRows = getFilteredSummaryRows()
+      data = summaryRows.map(row => ({
+        Category: row[0],
+        "No. of pkgs": row[1],
+        Freight: row[2],
+        Pickup: row[3],
+        "Drop Cartage": row[4],
+        Loading: row[5],
+        "LR Charge": row[6],
+        Amount: row[7],
+      }))
+      await generatePDFReport({
+        title: "Daily Collection Report",
+        data,
+        columns,
+        reportType: "collection",
+      })
+    } catch (error) {
+      console.error("Error exporting PDF:", error)
+      toast({
+        title: "Export Failed",
+        description: "Failed to generate PDF report. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Add a new exportFullSummaryPDF function for full summary export
+  const exportFullSummaryPDF = async () => {
+    try {
+      const doc = new jsPDF()
+      let yPos = 20
+      // Title
+      doc.setFontSize(18)
+      doc.text("Daily Collection Report", 14, yPos)
+      yPos += 8
+      doc.setFontSize(12)
+      doc.text(getReportDateRange(), 14, yPos)
+      yPos += 8
+      if (destination && destination !== "all") {
+        doc.text(`Destination: ${destination}`, 14, yPos)
+        yPos += 8
+      }
+      doc.setFontSize(10)
+      doc.text("BORIVALI BRANCH", 150, 20)
+      doc.text("Generated: " + format(new Date(), "dd/MM/yyyy HH:mm"), 150, 25)
+      yPos += 10
+      // Booking Details Table
+      doc.setFontSize(14)
+      doc.text("Booking Details", 14, yPos)
+      yPos += 6
+      autoTable(doc, {
+        startY: yPos,
+        head: [[
+          "CATEGORY",
+          "No. of pkgs",
+          "Freight",
+          "Pickup",
+          "Drop Cartage",
+          "Loading",
+          "LR Charge",
+          "AMOUNT"
+        ]],
+        body: getFilteredSummaryRows(),
+        theme: "grid",
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+      })
+      yPos = (doc as any).lastAutoTable.finalY + 10
+      // Delivery Details Table
+      doc.setFontSize(14)
+      doc.text("Delivery Details", 14, yPos)
+      yPos += 6
+      autoTable(doc, {
+        startY: yPos,
+        head: [[
+          "CATEGORY",
+          "No. of pkgs",
+          "FREIGHT",
+          "Unloading",
+          "DELIVERY DISCOUNT",
+          "AMOUNT"
+        ]],
+        body: getFilteredDeliveryRows(),
+        theme: "grid",
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+      })
+      yPos = (doc as any).lastAutoTable.finalY + 10
+      // Citywise Details Table
+      doc.setFontSize(14)
+      doc.text("Citywise Paid / ToPay Details", 14, yPos)
+      yPos += 6
+      // Prepare citywise table body with totals row
+      const citywiseTableBody = getFilteredCitywiseRows()
+      if (bookingTypeSummary === "all") {
+        citywiseTableBody.push([
+          "Total",
+          "",
+          citywiseStats.reduce((sum, city) => sum + city.paid, 0).toFixed(2),
+          citywiseStats.reduce((sum, city) => sum + city.toPay, 0).toFixed(2),
+          citywiseStats.reduce((sum, city) => sum + city.total, 0).toFixed(2),
+        ])
+      } else if (bookingTypeSummary === "TO PAY") {
+        citywiseTableBody.push([
+          "Total",
+          "",
+          "-",
+          citywiseStats.reduce((sum, city) => sum + city.toPay, 0).toFixed(2),
+          citywiseStats.reduce((sum, city) => sum + city.toPay, 0).toFixed(2),
+        ])
+      } else {
+        citywiseTableBody.push([
+          "Total",
+          "",
+          citywiseStats.reduce((sum, city) => sum + city.paid, 0).toFixed(2),
+          "-",
+          citywiseStats.reduce((sum, city) => sum + city.paid, 0).toFixed(2),
+        ])
+      }
+      autoTable(doc, {
+        startY: yPos,
+        head: [[
+          "Destination",
+          "Destination Branch",
+          "Paid",
+          "To Pay",
+          "Total"
+        ]],
+        body: citywiseTableBody,
+        theme: "grid",
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0], fontStyle: "bold" },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+      })
+      // Footer
+      const pageCount = (doc as any).internal.getNumberOfPages?.() || 1
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8)
+        doc.text(`Page ${i} of ${pageCount}`, doc.internal.pageSize.width - 30, doc.internal.pageSize.height - 10)
+        doc.text(`Generated on: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 14, doc.internal.pageSize.height - 10)
+      }
+      doc.save(`Daily_Collection_Report_${format(new Date(), "yyyyMMdd_HHmmss")}.pdf`)
+      toast({
+        title: "Export Successful",
+        description: "PDF report has been generated and downloaded",
+        variant: "default",
+      })
+    } catch (error) {
+      console.error("Error exporting PDF:", error)
+      toast({
+        title: "Export Failed",
+        description: "Failed to generate PDF report. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Reports</h1>
@@ -898,6 +1182,31 @@ const Reports = () => {
                 <div className="space-y-8">
                   {(reportType === "collection" || reportType === "branchCollection") && viewMode === "summary" && (
                     <>
+                      <div className="flex items-center mb-4 gap-4">
+                        <div className="flex gap-2">
+                          <Button
+                            variant={bookingTypeSummary === "all" ? "default" : "outline"}
+                            onClick={() => setBookingTypeSummary("all")}
+                          >
+                            All
+                          </Button>
+                          <Button
+                            variant={bookingTypeSummary === "TO PAY" ? "default" : "outline"}
+                            onClick={() => setBookingTypeSummary("TO PAY")}
+                          >
+                            To Pay
+                          </Button>
+                          <Button
+                            variant={bookingTypeSummary === "PAID" ? "default" : "outline"}
+                            onClick={() => setBookingTypeSummary("PAID")}
+                          >
+                            Paid
+                          </Button>
+                        </div>
+                        <Button onClick={exportFullSummaryPDF} className="ml-auto flex gap-2 items-center">
+                          <Download className="h-4 w-4" /> Export as PDF
+                        </Button>
+                      </div>
                       {/* Source Branch and Date Information */}
                       <div className="flex flex-wrap justify-between items-center text-sm mb-4">
                         <div>
@@ -931,36 +1240,15 @@ const Reports = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              <tr>
-                                <td className="border px-2 py-2 font-medium">To Pay</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.pkgs}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.freight}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.pickup}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.dropCartage}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.loading}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.lrCharge}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.toPay.amount.toFixed(2)}</td>
-                              </tr>
-                              <tr>
-                                <td className="border px-2 py-2 font-medium">Paid</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.paid.pkgs}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.paid.freight}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.paid.pickup}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.paid.dropCartage}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.paid.loading}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.paid.lrCharge}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.paid.amount.toFixed(2)}</td>
-                              </tr>
-                              <tr className="bg-gray-100 font-semibold">
-                                <td className="border px-2 py-2">Total :</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.total.pkgs}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.total.freight}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.total.pickup}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.total.dropCartage}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.total.loading}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.total.lrCharge}</td>
-                                <td className="border px-2 py-2 text-center">{bookingStats.total.amount.toFixed(2)}</td>
-                              </tr>
+                              {getFilteredSummaryRows().map((row, index) => (
+                                <tr key={index}>
+                                  {row.map((cell, cellIndex) => (
+                                    <td key={cellIndex} className="border px-2 py-2">
+                                      {cell}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
                         </div>
@@ -984,34 +1272,15 @@ const Reports = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              <tr>
-                                <td className="border px-2 py-2 font-medium">To Pay</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.pkgs}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.freight}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.unloading}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.toPay.deliveryDiscount}</td>
-                                <td className="border px-2 py-2 text-center">
-                                  {deliveryStats.toPay.amount.toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="border px-2 py-2 font-medium">Paid</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.pkgs}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.freight}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.unloading}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.deliveryDiscount}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.paid.amount.toFixed(2)}</td>
-                              </tr>
-                              <tr className="bg-gray-100 font-semibold">
-                                <td className="border px-2 py-2">Total :</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.total.pkgs}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.total.freight}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.total.unloading}</td>
-                                <td className="border px-2 py-2 text-center">{deliveryStats.total.deliveryDiscount}</td>
-                                <td className="border px-2 py-2 text-center">
-                                  {deliveryStats.total.amount.toFixed(2)}
-                                </td>
-                              </tr>
+                              {getFilteredDeliveryRows().map((row, index) => (
+                                <tr key={index}>
+                                  {row.map((cell, cellIndex) => (
+                                    <td key={cellIndex} className="border px-2 py-2">
+                                      {cell}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
                         </div>
@@ -1034,29 +1303,15 @@ const Reports = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              {citywiseStats.map((city, index) => (
+                              {getFilteredCitywiseRows().map((row, index) => (
                                 <tr key={index}>
-                                  <td className="border px-2 py-2">{city.destination}</td>
-                                  <td className="border px-2 py-2">{city.branch}</td>
-                                  <td className="border px-2 py-2 text-center">{city.paid.toFixed(2)}</td>
-                                  <td className="border px-2 py-2 text-center">{city.toPay.toFixed(2)}</td>
-                                  <td className="border px-2 py-2 text-center">{city.total.toFixed(2)}</td>
+                                  {row.map((cell, cellIndex) => (
+                                    <td key={cellIndex} className="border px-2 py-2">
+                                      {cell}
+                                    </td>
+                                  ))}
                                 </tr>
                               ))}
-                              <tr className="bg-gray-100 font-semibold">
-                                <td className="border px-2 py-2" colSpan={2}>
-                                  Total :
-                                </td>
-                                <td className="border px-2 py-2 text-center">
-                                  {citywiseStats.reduce((sum, city) => sum + city.paid, 0).toFixed(2)}
-                                </td>
-                                <td className="border px-2 py-2 text-center">
-                                  {citywiseStats.reduce((sum, city) => sum + city.toPay, 0).toFixed(2)}
-                                </td>
-                                <td className="border px-2 py-2 text-center">
-                                  {citywiseStats.reduce((sum, city) => sum + city.total, 0).toFixed(2)}
-                                </td>
-                              </tr>
                             </tbody>
                           </table>
                         </div>
