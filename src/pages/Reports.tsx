@@ -28,11 +28,39 @@ const Reports = () => {
   const [reportType, setReportType] = useState("collection")
   const [destination, setDestination] = useState("all")
   const [isLoading, setIsLoading] = useState(false)
-  const [reportData, setReportData] = useState<any[]>([])
+  // Replace 'any' with a union type for reportData
+  const [reportData, setReportData] = useState<
+    | Array<{
+        id: string
+        date: string
+        branch: string
+        destination: string
+        amount: number
+        type: string
+        pkgs: number
+        freight: number
+        pickup: number
+        dropCartage: number
+        loading: number
+        lrCharge: number
+        unloading: number
+        deliveryDiscount: number
+      }>
+    | Array<{
+        id: string
+        date: string
+        from: string
+        to: string
+        status: string
+        dispatchDate?: string
+        deliveryDate?: string
+      }>
+  >([])
   const [isExporting, setIsExporting] = useState(false)
   const [destinations, setDestinations] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<"summary" | "list">("summary")
   const [detailedBookings, setDetailedBookings] = useState<Booking[]>([])
+  const [bookingTypeFilter, setBookingTypeFilter] = useState<"all" | "TO PAY" | "PAID">("all")
   const isMobile = useIsMobile()
   const { toast } = useToast()
 
@@ -102,10 +130,9 @@ const Reports = () => {
     setIsLoading(true)
     try {
       let data: any[] = []
-
       switch (reportType) {
         case "collection":
-        case "branchCollection":
+        case "branchCollection": {
           // Get all bookings for the selected date range
           const allBookings = await getRecentBookings(100)
 
@@ -262,8 +289,8 @@ const Reports = () => {
 
           setCitywiseStats(citywiseData)
           break
-
-        case "dispatched":
+        }
+        case "dispatched": {
           // Get all bookings with "Dispatched" status
           const dispatchedBookings = await getRecentBookings(50)
           data = dispatchedBookings
@@ -277,8 +304,8 @@ const Reports = () => {
               dispatchDate: booking.dispatchDate || "",
             }))
           break
-
-        case "pendingDispatch":
+        }
+        case "pendingDispatch": {
           // Get all bookings with "Booked" status
           const pendingDispatchBookings = await getRecentBookings(50)
           data = pendingDispatchBookings
@@ -292,8 +319,8 @@ const Reports = () => {
               dispatchDate: "",
             }))
           break
-
-        case "delivered":
+        }
+        case "delivered": {
           // Get all bookings with "Delivered" status
           const deliveredBookings = await getRecentBookings(50)
           data = deliveredBookings
@@ -307,8 +334,8 @@ const Reports = () => {
               deliveryDate: booking.deliveryDate || "",
             }))
           break
-
-        case "pendingDelivery":
+        }
+        case "pendingDelivery": {
           // Get all bookings with "Received" status
           const pendingDeliveryBookings = await getRecentBookings(50)
           data = pendingDeliveryBookings
@@ -322,12 +349,12 @@ const Reports = () => {
               deliveryDate: "",
             }))
           break
-
-        default:
+        }
+        default: {
           data = []
           setDetailedBookings([])
+        }
       }
-
       setReportData(data)
     } catch (error) {
       console.error("Error loading report data:", error)
@@ -377,6 +404,10 @@ const Reports = () => {
     viewInvoicePDF(booking)
   }
 
+  const handleExportBookingPDF = (booking: Booking) => {
+    viewInvoicePDF(booking)
+  }
+
   // Enhanced PDF export functionality
   const handleExportPDF = async () => {
     setIsExporting(true)
@@ -412,7 +443,7 @@ const Reports = () => {
         doc.text("Booking Details", 14, yPos)
         yPos += 10
 
-        // @ts-ignore
+        // @ts-expect-error
         doc.autoTable({
           startY: yPos,
           head: [["CATEGORY", "No. of pkgs", "Freight", "Pickup", "Drop Cartage", "Loading", "LR Charge", "AMOUNT"]],
@@ -455,7 +486,7 @@ const Reports = () => {
           alternateRowStyles: { fillColor: [250, 250, 250] },
         })
 
-        // @ts-ignore
+        // @ts-expect-error
         yPos = doc.lastAutoTable.finalY + 15
 
         // Delivery Details Table
@@ -463,7 +494,7 @@ const Reports = () => {
         doc.text("Delivery Details", 14, yPos)
         yPos += 10
 
-        // @ts-ignore
+        // @ts-expect-error
         doc.autoTable({
           startY: yPos,
           head: [["CATEGORY", "No. of pkgs", "FREIGHT", "Unloading", "DELIVERY DISCOUNT", "AMOUNT"]],
@@ -500,7 +531,7 @@ const Reports = () => {
           alternateRowStyles: { fillColor: [250, 250, 250] },
         })
 
-        // @ts-ignore
+        // @ts-expect-error
         yPos = doc.lastAutoTable.finalY + 15
 
         // Check if we need a new page for citywise details
@@ -531,7 +562,7 @@ const Reports = () => {
           citywiseStats.reduce((sum, city) => sum + city.total, 0).toFixed(2),
         ])
 
-        // @ts-ignore
+        // @ts-expect-error
         doc.autoTable({
           startY: yPos,
           head: [["Destination", "Destination Branch", "Paid", "To Pay", "Total"]],
@@ -544,7 +575,7 @@ const Reports = () => {
         })
       } else if (reportType === "dispatched" || reportType === "pendingDispatch") {
         // Dispatch Reports
-        // @ts-ignore
+        // @ts-expect-error
         doc.autoTable({
           startY: yPos,
           head: [["LR No.", "Booking Date", "From", "To", "Status", "Dispatch Date"]],
@@ -563,7 +594,7 @@ const Reports = () => {
         })
       } else if (reportType === "delivered" || reportType === "pendingDelivery") {
         // Delivery Reports
-        // @ts-ignore
+        // @ts-expect-error
         doc.autoTable({
           startY: yPos,
           head: [["LR No.", "Booking Date", "From", "To", "Status", "Delivery Date"]],
@@ -682,6 +713,11 @@ const Reports = () => {
         return []
     }
   }
+
+  // Filtered detailed bookings by bookingType
+  const filteredDetailedBookings = bookingTypeFilter === "all"
+    ? detailedBookings
+    : detailedBookings.filter(b => b.bookingType === bookingTypeFilter)
 
   return (
     <div className="space-y-6">
@@ -1029,6 +1065,20 @@ const Reports = () => {
                   )}
                   {(reportType === "collection" || reportType === "branchCollection") && viewMode === "list" && (
                     <div className={isMobile ? "overflow-x-auto text-xs p-1" : "overflow-x-auto"}>
+                      {/* Booking Type Filter */}
+                      <div className="flex items-center mb-2 gap-2">
+                        <label className="text-sm font-medium">Booking Type:</label>
+                        <Select value={bookingTypeFilter} onValueChange={setBookingTypeFilter}>
+                          <SelectTrigger className="w-32">
+                            <SelectValue placeholder="All" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            <SelectItem value="TO PAY">To Pay</SelectItem>
+                            <SelectItem value="PAID">Paid</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <table className="w-full text-sm min-w-[600px]">
                         <thead>
                           <tr className="border-b">
@@ -1042,7 +1092,7 @@ const Reports = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {detailedBookings.map((booking) => (
+                          {filteredDetailedBookings.map((booking) => (
                             <tr key={booking.id} className="border-b hover:bg-gray-50">
                               <td className="py-3 px-2">{booking.id}</td>
                               <td className="py-3 px-2">{booking.bookingDate}</td>
@@ -1050,14 +1100,24 @@ const Reports = () => {
                               <td className="py-3 px-2">{booking.deliveryDestination}</td>
                               <td className="py-3 px-2">{booking.bookingType}</td>
                               <td className="py-3 px-2 text-right">{booking.totalAmount.toFixed(2)}</td>
-                              <td className="py-3 px-2 text-center">
+                              <td className="py-3 px-2 text-center flex gap-1 justify-center">
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleViewBooking(booking)}
                                   className="h-8 w-8 p-0"
+                                  title="View"
                                 >
                                   <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleExportBookingPDF(booking)}
+                                  className="h-8 w-8 p-0"
+                                  title="Export PDF"
+                                >
+                                  <Download className="h-4 w-4" />
                                 </Button>
                               </td>
                             </tr>
