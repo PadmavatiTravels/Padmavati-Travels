@@ -34,15 +34,23 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
   console.log("Delivery Contact in PDF generation:", booking.deliveryContact)
   console.log("Full booking object:", JSON.stringify(booking, null, 2))
 
-  // Parse the booking timestamp for consistent date display
-  const invoiceTimestampCandidate =
-    (booking as any).invoiceGeneratedAt ||
-    (booking as any).generatedAt ||
-    (booking as any).bookingDate ||
-    (booking as any).createdAt ||
-    (booking as any).updatedAt
-  const generatedDate =
-    parseBookingTimestamp(invoiceTimestampCandidate) || parseBookingTimestamp(booking.bookingDate) || new Date()
+  // Parse the invoice timestamp for consistent date display
+  const invoiceCandidate =
+    (booking as any).invoiceGeneratedAt || booking.createdAt || booking.bookingDate || booking.updatedAt
+  const invoiceDate = parseBookingTimestamp(invoiceCandidate) || null
+  const invoiceFormattedString =
+    (booking as any).invoiceGeneratedAtFormatted ||
+    (invoiceDate
+      ? invoiceDate.toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+      : null)
 
   return new Promise((resolve, reject) => {
     try {
@@ -203,16 +211,13 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.text(`Lr Number : ${booking.id}`, rightColumnX, currentY)
 
         currentY += 4 // Reduced from 5
-        doc.text(
-          `Booking Time : ${generatedDate.toLocaleDateString()} ${generatedDate.toLocaleTimeString()}`,
-          leftColumnX,
-          currentY,
-        )
-        doc.text(
-          `Booking Time : ${generatedDate.toLocaleDateString()} ${generatedDate.toLocaleTimeString()}`,
-          rightColumnX,
-          currentY,
-        )
+        const bookingTimeDisplay = invoiceFormattedString
+          ? invoiceFormattedString
+          : invoiceDate
+            ? `${invoiceDate.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })} ${invoiceDate.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })}`
+            : `${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`
+        doc.text(`Booking Time : ${bookingTimeDisplay}`, leftColumnX, currentY)
+        doc.text(`Booking Time : ${bookingTimeDisplay}`, rightColumnX, currentY)
 
         currentY += 4 // Reduced from 5
         doc.text(`Lr Type : ${booking.bookingType}`, leftColumnX, currentY)
@@ -285,11 +290,14 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         currentY += 4 // Reduced from 5
 
         // Place Booking By and Print Time side by side on the same line
+        const printTime = invoiceDate
+          ? invoiceDate.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })
+          : new Date().toLocaleTimeString()
         doc.text(`Booking By : PADMA`, leftColumnX, currentY)
-        doc.text(`Print Time : ${generatedDate.toLocaleTimeString()}`, leftColumnX + 40, currentY)
+        doc.text(`Print Time : ${printTime}`, leftColumnX + 40, currentY)
 
         doc.text(`Booking By : PADMA`, rightColumnX, currentY)
-        doc.text(`Print Time : ${generatedDate.toLocaleTimeString()}`, rightColumnX + 40, currentY)
+        doc.text(`Print Time : ${printTime}`, rightColumnX + 40, currentY)
 
         // Update the current Y position
         currentY += 7 // Adjusted spacing for next section
@@ -364,13 +372,35 @@ export const uploadInvoicePDF = async (
     // Upload the PDF blob to Google Drive
     const downloadURL = await uploadFileToDrive(pdfBlob, filename)
 
-    // Update the booking record in Firestore with the PDF URL
-    const bookingRef = doc(db, "bookings", booking.id)
-    await updateDoc(bookingRef, {
+    // Generate timestamps
+    const now = new Date()
+    const nowIso = now.toISOString()
+    const invoiceFormattedInIST = now.toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+
+    // Build update payload
+    const updatePayload: any = {
       pdfUrl: downloadURL,
       invoiceUrl: downloadURL, // For backward compatibility
-      updatedAt: new Date().toISOString(),
-    })
+      updatedAt: nowIso,
+    }
+
+    // Add invoiceGeneratedAt and invoiceGeneratedAtFormatted if not present
+    if (!(booking as any).invoiceGeneratedAt) {
+      updatePayload.invoiceGeneratedAt = nowIso
+      updatePayload.invoiceGeneratedAtFormatted = invoiceFormattedInIST
+    }
+
+    // Update the booking record in Firestore with the PDF URL
+    const bookingRef = doc(db, "bookings", booking.id)
+    await updateDoc(bookingRef, updatePayload)
 
     return downloadURL
   } catch (error) {
