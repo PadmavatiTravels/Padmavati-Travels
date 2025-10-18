@@ -6,11 +6,43 @@ import { db } from "../lib/firebase"
 import { doc, updateDoc } from "firebase/firestore"
 import { uploadFileToDrive } from "./googleDrive"
 
+// Parse booking timestamp from various formats
+function parseBookingTimestamp(value: any): Date | null {
+  if (!value) return null
+  // Firestore Timestamp object (has toDate)
+  if (typeof value === "object" && typeof (value as any).toDate === "function") {
+    return (value as any).toDate()
+  }
+  // Firestore-like { seconds }
+  if (typeof value === "object" && typeof (value as any).seconds === "number") {
+    return new Date((value as any).seconds * 1000)
+  }
+  // string or number
+  try {
+    if (typeof value === "string" || typeof value === "number") {
+      return new Date(value)
+    }
+  } catch (e) {
+    return null
+  }
+  return null
+}
+
 // Generate PDF for a booking
 export const generateInvoicePDF = async (booking: Booking, options?: { skipUpload?: boolean }): Promise<Blob> => {
   // Add this console log at the beginning of the function
   console.log("Delivery Contact in PDF generation:", booking.deliveryContact)
   console.log("Full booking object:", JSON.stringify(booking, null, 2))
+
+  // Parse the booking timestamp for consistent date display
+  const invoiceTimestampCandidate =
+    (booking as any).invoiceGeneratedAt ||
+    (booking as any).generatedAt ||
+    (booking as any).bookingDate ||
+    (booking as any).createdAt ||
+    (booking as any).updatedAt
+  const generatedDate =
+    parseBookingTimestamp(invoiceTimestampCandidate) || parseBookingTimestamp(booking.bookingDate) || new Date()
 
   return new Promise((resolve, reject) => {
     try {
@@ -171,8 +203,16 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.text(`Lr Number : ${booking.id}`, rightColumnX, currentY)
 
         currentY += 4 // Reduced from 5
-        doc.text(`Booking Time : ${booking.bookingDate} ${new Date().toLocaleTimeString()}`, leftColumnX, currentY)
-        doc.text(`Booking Time : ${booking.bookingDate} ${new Date().toLocaleTimeString()}`, rightColumnX, currentY)
+        doc.text(
+          `Booking Time : ${generatedDate.toLocaleDateString()} ${generatedDate.toLocaleTimeString()}`,
+          leftColumnX,
+          currentY,
+        )
+        doc.text(
+          `Booking Time : ${generatedDate.toLocaleDateString()} ${generatedDate.toLocaleTimeString()}`,
+          rightColumnX,
+          currentY,
+        )
 
         currentY += 4 // Reduced from 5
         doc.text(`Lr Type : ${booking.bookingType}`, leftColumnX, currentY)
@@ -245,12 +285,11 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         currentY += 4 // Reduced from 5
 
         // Place Booking By and Print Time side by side on the same line
-        const printTime = new Date().toLocaleTimeString()
         doc.text(`Booking By : PADMA`, leftColumnX, currentY)
-        doc.text(`Print Time : ${printTime}`, leftColumnX + 40, currentY)
+        doc.text(`Print Time : ${generatedDate.toLocaleTimeString()}`, leftColumnX + 40, currentY)
 
         doc.text(`Booking By : PADMA`, rightColumnX, currentY)
-        doc.text(`Print Time : ${printTime}`, rightColumnX + 40, currentY)
+        doc.text(`Print Time : ${generatedDate.toLocaleTimeString()}`, rightColumnX + 40, currentY)
 
         // Update the current Y position
         currentY += 7 // Adjusted spacing for next section
@@ -297,7 +336,7 @@ export const generateInvoicePDF = async (booking: Booking, options?: { skipUploa
         doc.setFontSize(12) // Reduced from 14
         doc.text(`Booking Invoice: ${booking.id}`, 14, 20)
         doc.text(`Type: ${booking.bookingType}`, 14, 30)
-        doc.text(`Date: ${booking.bookingDate}`, 14, 40)
+        doc.text(`Date: ${generatedDate.toLocaleDateString()}`, 14, 40)
         doc.text(`Total Amount: ₹${booking.totalAmount.toFixed(2)}`, 14, 50)
         const fallbackBlob = doc.output("blob")
         resolve(fallbackBlob)
